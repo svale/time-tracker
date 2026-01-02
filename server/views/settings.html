@@ -4,85 +4,131 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Time Tracker - Settings</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
+    <!-- Noise texture overlay -->
+    <div class="noise-overlay"></div>
+
     <div class="container">
-        <header>
-            <h1>⏱️ Time Tracker</h1>
-            <nav>
-                <a href="/">Dashboard</a>
-                <a href="/reports">Reports</a>
-                <a href="/settings" class="active">Settings</a>
-            </nav>
+        <!-- Header with navigation -->
+        <header class="site-header">
+            <div class="header-content">
+                <div class="brand">
+                    <h1 class="brand-title">Temporal Archive</h1>
+                    <div class="brand-subtitle">A private chronicle of your digital time</div>
+                </div>
+                <nav class="main-nav">
+                    <a href="/" class="nav-link">Dashboard</a>
+                    <a href="/reports" class="nav-link">Reports</a>
+                    <a href="/settings" class="nav-link active">Settings</a>
+                </nav>
+            </div>
+            <div class="privacy-badge">
+                <svg class="lock-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
+                <span>Local & Private</span>
+            </div>
         </header>
 
-        <main>
-            <div class="page-header">
-                <h2>Settings</h2>
-                <p class="subtitle">Configure your time tracker</p>
+        <main class="main-content">
+            <!-- Decorative separator -->
+            <div class="section-separator">
+                <span class="separator-ornament">◆</span>
             </div>
 
-            <div class="card">
-                <h3>Tracking Settings</h3>
-                <form id="settings-form">
-                    <div class="form-group">
-                        <label for="polling_interval">Polling Interval (minutes)</label>
-                        <input type="number"
-                               id="polling_interval"
-                               name="polling_interval_minutes"
-                               min="1"
-                               max="60"
-                               value="5"
-                               placeholder="5">
-                        <p style="font-size: 12px; color: var(--text-light); margin-top: 4px;">
-                            How often to check browser history (default: 5 minutes). Requires daemon restart.
-                        </p>
-                    </div>
+            <section class="summary-section">
+                <div class="section-header">
+                    <h2 class="section-title">Configuration</h2>
+                    <p class="section-description">Customize your time tracking preferences</p>
+                </div>
 
-                    <div class="form-group">
-                        <label for="session_gap">Session Gap (minutes)</label>
-                        <input type="number"
-                               id="session_gap"
-                               name="session_gap_minutes"
-                               min="1"
-                               max="30"
-                               value="5"
-                               placeholder="5">
-                        <p style="font-size: 12px; color: var(--text-light); margin-top: 4px;">
-                            Time between visits to consider them separate sessions (default: 5 minutes)
-                        </p>
-                    </div>
+                <!-- Tracking Settings -->
+                <div class="activities-container" style="margin-bottom: 32px;">
+                    <h3 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; color: var(--color-charcoal); margin-bottom: 24px;">
+                        Tracking Settings
+                    </h3>
+                    <form id="settings-form">
+                        <div class="form-group">
+                            <label for="polling_interval">Polling Interval (minutes)</label>
+                            <input type="number"
+                                   id="polling_interval"
+                                   name="polling_interval_minutes"
+                                   min="1"
+                                   max="60"
+                                   value="5"
+                                   placeholder="5">
+                            <p style="font-size: 0.85rem; color: var(--color-warm-gray); margin-top: 8px; font-style: italic;">
+                                How often to check browser history (default: 5 minutes). Requires daemon restart to take effect.
+                            </p>
+                        </div>
 
-                    <button type="submit">Save Settings</button>
-                    <div id="save-message" style="margin-left: 12px; display: inline-block; color: var(--success);"></div>
-                </form>
-            </div>
+                        <div class="form-group">
+                            <label for="session_gap">Session Gap (minutes)</label>
+                            <input type="number"
+                                   id="session_gap"
+                                   name="session_gap_minutes"
+                                   min="1"
+                                   max="30"
+                                   value="5"
+                                   placeholder="5">
+                            <p style="font-size: 0.85rem; color: var(--color-warm-gray); margin-top: 8px; font-style: italic;">
+                                Time between visits to consider them separate sessions (default: 5 minutes)
+                            </p>
+                        </div>
 
-            <div class="card">
-                <h3>Database Info</h3>
-                <p style="color: var(--text-light); margin-bottom: 12px;">
-                    Database location: <code style="background: var(--background); padding: 4px 8px; border-radius: 4px;">data/activity.db</code>
-                </p>
-                <p style="color: var(--text-light);">
-                    All your activity data is stored locally on your computer. No data is sent to external servers.
-                </p>
-            </div>
+                        <div style="display: flex; align-items: center; gap: 16px;">
+                            <button type="submit">Save Settings</button>
+                            <div id="save-message" style="color: var(--color-terracotta); font-weight: 600; font-size: 0.9rem;"></div>
+                        </div>
+                    </form>
+                </div>
 
-            <div class="card">
-                <h3>Privacy Information</h3>
-                <ul style="margin-left: 24px; color: var(--text-light); line-height: 1.8;">
-                    <li>All data stays on your machine</li>
-                    <li>No network calls or telemetry</li>
-                    <li>Only tracks application names and window titles</li>
-                    <li>Idle detection uses system HID time (no keystroke logging)</li>
-                    <li>You can delete the database file at any time</li>
-                </ul>
-            </div>
+                <!-- Database Info -->
+                <div class="activities-container" style="margin-bottom: 32px;">
+                    <h3 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; color: var(--color-charcoal); margin-bottom: 24px;">
+                        Database Information
+                    </h3>
+                    <p style="color: var(--color-warm-gray); margin-bottom: 16px; line-height: 1.8;">
+                        Database location:
+                        <code style="background: var(--color-cream); padding: 6px 12px; border-radius: var(--radius-sm); font-family: var(--font-mono); font-size: 0.85rem; color: var(--color-charcoal); border: 1px solid var(--color-border);">
+                            data/activity.db
+                        </code>
+                    </p>
+                    <p style="color: var(--color-warm-gray); font-style: italic;">
+                        All your activity data is stored locally on your computer in a SQLite database. No data is sent to external servers.
+                    </p>
+                </div>
+
+                <!-- Privacy Information -->
+                <div class="activities-container">
+                    <h3 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; color: var(--color-charcoal); margin-bottom: 24px;">
+                        Privacy Principles
+                    </h3>
+                    <ul style="margin-left: 24px; color: var(--color-warm-gray); line-height: 2;">
+                        <li>All data stays on your machine — nothing is transmitted over the network</li>
+                        <li>No telemetry, analytics, or tracking of any kind</li>
+                        <li>Only reads browser history files (Chrome and Safari)</li>
+                        <li>No accessibility permissions required (unlike traditional time trackers)</li>
+                        <li>You can delete the database file at any time without consequences</li>
+                        <li>Open source — inspect the code yourself</li>
+                    </ul>
+                </div>
+            </section>
         </main>
 
-        <footer>
-            <p>Privacy-focused • All data stored locally</p>
+        <!-- Footer -->
+        <footer class="site-footer">
+            <div class="footer-ornament">❖</div>
+            <p class="footer-text">
+                No permissions required • All data remains on your machine • Browser history read only
+            </p>
+            <p class="footer-meta">Time Tracker v1.0</p>
         </footer>
     </div>
 
@@ -120,7 +166,7 @@
 
                 if (response.ok) {
                     const messageEl = document.getElementById('save-message');
-                    messageEl.textContent = '✓ Settings saved!';
+                    messageEl.textContent = '✓ Settings saved successfully!';
                     setTimeout(() => {
                         messageEl.textContent = '';
                     }, 3000);
