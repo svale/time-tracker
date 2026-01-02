@@ -54,7 +54,8 @@ function getTodayString() {
 router.get('/daily-summary', (req, res) => {
   try {
     const date = req.query.date || getTodayString();
-    const report = db.getDailyReportAll(date);
+    const projectId = req.query.project_id ? parseInt(req.query.project_id, 10) : null;
+    const report = db.getDailyReportAll(date, projectId);
 
     // Calculate totals
     let totalSeconds = 0;
@@ -76,6 +77,9 @@ router.get('/daily-summary', (req, res) => {
       top_activities: topActivities.map(row => ({
         app: row.app_name,
         domain: row.domain,
+        project_id: row.project_id || null,
+        project_name: row.project_name || null,
+        project_color: row.project_color || null,
         time: formatDuration(row.total_seconds || 0),
         seconds: row.total_seconds || 0,
         percentage: totalSeconds > 0 ? Math.round((row.total_seconds / totalSeconds) * 100) : 0
@@ -96,7 +100,8 @@ router.get('/daily-summary', (req, res) => {
 router.get('/daily-report', (req, res) => {
   try {
     const date = req.query.date || getTodayString();
-    const report = db.getDailyReportAll(date);
+    const projectId = req.query.project_id ? parseInt(req.query.project_id, 10) : null;
+    const report = db.getDailyReportAll(date, projectId);
 
     // Calculate total for percentages
     const totalSeconds = report.reduce((sum, row) => sum + (row.total_seconds || 0), 0);
@@ -105,6 +110,9 @@ router.get('/daily-report', (req, res) => {
       app_name: row.app_name,
       app_bundle_id: row.app_bundle_id,
       domain: row.domain,
+      project_id: row.project_id || null,
+      project_name: row.project_name || null,
+      project_color: row.project_color || null,
       time: formatDuration(row.total_seconds || 0),
       seconds: row.total_seconds || 0,
       session_count: row.session_count || 0,

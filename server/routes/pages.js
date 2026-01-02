@@ -41,6 +41,18 @@ router.get('/reports', (req, res) => {
 });
 
 /**
+ * Projects page
+ */
+router.get('/projects', (req, res) => {
+  try {
+    const html = readTemplate('projects.html');
+    res.send(html);
+  } catch (error) {
+    res.status(500).send('<h1>Error loading projects</h1>');
+  }
+});
+
+/**
  * Settings page
  */
 router.get('/settings', (req, res) => {

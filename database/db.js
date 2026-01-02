@@ -178,27 +178,45 @@ function getDailyReport(dateString) {
 /**
  * Get all daily reports (returns array of rows)
  */
-function getDailyReportAll(dateString) {
+function getDailyReportAll(dateString, projectId = null) {
   if (!db) throw new Error('Database not initialized');
 
   const startOfDay = new Date(dateString).setHours(0, 0, 0, 0);
   const endOfDay = new Date(dateString).setHours(23, 59, 59, 999);
 
   const results = [];
-  const stmt = db.prepare(`
-    SELECT
-      app_name,
-      app_bundle_id,
-      domain,
-      SUM(duration_seconds) as total_seconds,
-      COUNT(*) as session_count
-    FROM activity_sessions
-    WHERE start_time >= ? AND start_time <= ?
-    GROUP BY app_name, app_bundle_id, domain
-    ORDER BY total_seconds DESC
-  `);
 
-  stmt.bind([startOfDay, endOfDay]);
+  // Build query with optional project filter
+  let query = `
+    SELECT
+      s.app_name,
+      s.app_bundle_id,
+      s.domain,
+      s.project_id,
+      p.name as project_name,
+      p.color as project_color,
+      SUM(s.duration_seconds) as total_seconds,
+      COUNT(*) as session_count
+    FROM activity_sessions s
+    LEFT JOIN projects p ON s.project_id = p.id
+    WHERE s.start_time >= ? AND s.start_time <= ?
+  `;
+
+  const params = [startOfDay, endOfDay];
+
+  // Add project filter if specified
+  if (projectId !== null) {
+    query += ` AND s.project_id = ?`;
+    params.push(projectId);
+  }
+
+  query += `
+    GROUP BY s.app_name, s.app_bundle_id, s.domain, s.project_id
+    ORDER BY total_seconds DESC
+  `;
+
+  const stmt = db.prepare(query);
+  stmt.bind(params);
   while (stmt.step()) {
     results.push(stmt.getAsObject());
   }
