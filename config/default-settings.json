@@ -1,0 +1,10 @@
+{
+  "idle_threshold_seconds": 60,
+  "polling_interval_seconds": 5,
+  "excluded_apps": [
+    "1Password",
+    "Keychain Access",
+    "Messages",
+    "Mail"
+  ]
+}

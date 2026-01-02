@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Time Tracker - Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <!-- Noise texture overlay -->
+    <div class="noise-overlay"></div>
+
+    <div class="container">
+        <!-- Header with navigation -->
+        <header class="site-header">
+            <div class="header-content">
+                <div class="brand">
+                    <h1 class="brand-title">Temporal Archive</h1>
+                    <div class="brand-subtitle">A private chronicle of your digital time</div>
+                </div>
+                <nav class="main-nav">
+                    <a href="/" class="nav-link active">Dashboard</a>
+                    <a href="/reports" class="nav-link">Reports</a>
+                    <a href="/settings" class="nav-link">Settings</a>
+                </nav>
+            </div>
+            <div class="privacy-badge">
+                <svg class="lock-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
+                <span>Local & Private</span>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <!-- Current time display -->
+            <div class="time-display" id="current-time-display">
+                <div class="time-label">Current Time</div>
+                <div class="time-value" id="current-time"></div>
+                <div class="date-value" id="current-date"></div>
+            </div>
+
+            <!-- Decorative separator -->
+            <div class="section-separator">
+                <span class="separator-ornament">◆</span>
+            </div>
+
+            <!-- Summary section -->
+            <section class="summary-section">
+                <h2 class="section-title">Today's Chronicle</h2>
+                <div id="summary-cards"
+                     hx-get="/api/daily-summary"
+                     hx-trigger="load, every 60s"
+                     hx-swap="innerHTML">
+                    <div class="loading-state">
+                        <div class="loading-spinner"></div>
+                        <p>Gathering temporal data...</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Timeline visualization -->
+            <section class="timeline-section">
+                <div class="section-header">
+                    <h2 class="section-title">Hourly Distribution</h2>
+                    <p class="section-description">Your activity pattern throughout the day</p>
+                </div>
+                <div class="chart-container">
+                    <canvas id="timeline-chart"></canvas>
+                </div>
+            </section>
+
+            <!-- Activities list -->
+            <section class="activities-section">
+                <div class="section-header">
+                    <h2 class="section-title">Domain Activity Log</h2>
+                    <p class="section-description">Tracked sessions from your browser history</p>
+                </div>
+                <div class="activities-container"
+                     id="activities-table"
+                     hx-get="/api/daily-report"
+                     hx-trigger="load, every 60s"
+                     hx-swap="innerHTML">
+                    <div class="loading-state">
+                        <div class="loading-spinner"></div>
+                        <p>Loading activity log...</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="site-footer">
+            <div class="footer-ornament">❖</div>
+            <p class="footer-text">
+                No permissions required • All data remains on your machine • Browser history read only
+            </p>
+            <p class="footer-meta">Time Tracker v1.0</p>
+        </footer>
+    </div>
+
+    <script src="/js/app.js"></script>
+    <script>
+        // Update current time display
+        function updateCurrentTime() {
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString('en-US', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false
+            });
+            const dateStr = now.toLocaleDateString('en-US', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+
+            const timeEl = document.getElementById('current-time');
+            const dateEl = document.getElementById('current-date');
+
+            if (timeEl) timeEl.textContent = timeStr;
+            if (dateEl) dateEl.textContent = dateStr;
+        }
+
+        // Update time every second
+        updateCurrentTime();
+        setInterval(updateCurrentTime, 1000);
+
+        // Handle HTMX responses
+        document.body.addEventListener('htmx:afterSwap', function(event) {
+            if (event.detail.target.id === 'summary-cards') {
+                renderSummaryCards(event);
+            } else if (event.detail.target.id === 'activities-table') {
+                renderActivitiesTable(event);
+            }
+        });
+
+        function renderSummaryCards(event) {
+            const xhr = event.detail.xhr;
+            const data = JSON.parse(xhr.responseText);
+
+            const html = `
+                <div class="summary-grid">
+                    <div class="stat-card stat-card--primary">
+                        <div class="stat-ornament">⟡</div>
+                        <div class="stat-value">${data.total_time}</div>
+                        <div class="stat-label">Total Active Time</div>
+                        <div class="stat-detail">${data.total_sessions} sessions recorded</div>
+                    </div>
+                    <div class="stat-card stat-card--secondary">
+                        <div class="stat-ornament">⟡</div>
+                        <div class="stat-value">${data.top_activities.length}</div>
+                        <div class="stat-label">Domains Visited</div>
+                        <div class="stat-detail">From browser history</div>
+                    </div>
+                    <div class="stat-card stat-card--accent">
+                        <div class="stat-ornament">⟡</div>
+                        <div class="stat-value">${data.top_activities[0] ? data.top_activities[0].domain || data.top_activities[0].app : '—'}</div>
+                        <div class="stat-label">Most Visited</div>
+                        <div class="stat-detail">${data.top_activities[0] ? data.top_activities[0].time : 'No data'}</div>
+                    </div>
+                </div>
+            `;
+
+            event.detail.target.innerHTML = html;
+
+            // Update timeline chart
+            updateTimelineChart();
+        }
+
+        function renderActivitiesTable(event) {
+            const xhr = event.detail.xhr;
+            const data = JSON.parse(xhr.responseText);
+
+            if (data.activities.length === 0) {
+                event.detail.target.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-ornament">◇</div>
+                        <p class="empty-message">No activity recorded yet today.</p>
+                        <p class="empty-hint">Browser history is checked every 5 minutes.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            let html = '<div class="activities-list">';
+
+            data.activities.forEach((activity, index) => {
+                const displayName = activity.domain || activity.app_name;
+                const browserName = activity.app_name;
+                const animationDelay = index * 0.05;
+
+                html += `
+                    <div class="activity-entry" style="animation-delay: ${animationDelay}s">
+                        <div class="activity-main">
+                            <div class="activity-domain">${displayName}</div>
+                            <div class="activity-browser">${browserName}</div>
+                        </div>
+                        <div class="activity-stats">
+                            <div class="activity-time">${activity.time}</div>
+                            <div class="activity-sessions">${activity.session_count} session${activity.session_count !== 1 ? 's' : ''}</div>
+                        </div>
+                        <div class="activity-bar">
+                            <div class="activity-bar-fill" style="width: ${activity.percentage}%"></div>
+                            <div class="activity-percentage">${activity.percentage}%</div>
+                        </div>
+                    </div>
+                `;
+            });
+
+            html += '</div>';
+            event.detail.target.innerHTML = html;
+        }
+    </script>
+</body>
+</html>

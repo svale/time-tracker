@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Time Tracker - Settings</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>⏱️ Time Tracker</h1>
+            <nav>
+                <a href="/">Dashboard</a>
+                <a href="/reports">Reports</a>
+                <a href="/settings" class="active">Settings</a>
+            </nav>
+        </header>
+
+        <main>
+            <div class="page-header">
+                <h2>Settings</h2>
+                <p class="subtitle">Configure your time tracker</p>
+            </div>
+
+            <div class="card">
+                <h3>Tracking Settings</h3>
+                <form id="settings-form">
+                    <div class="form-group">
+                        <label for="polling_interval">Polling Interval (minutes)</label>
+                        <input type="number"
+                               id="polling_interval"
+                               name="polling_interval_minutes"
+                               min="1"
+                               max="60"
+                               value="5"
+                               placeholder="5">
+                        <p style="font-size: 12px; color: var(--text-light); margin-top: 4px;">
+                            How often to check browser history (default: 5 minutes). Requires daemon restart.
+                        </p>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="session_gap">Session Gap (minutes)</label>
+                        <input type="number"
+                               id="session_gap"
+                               name="session_gap_minutes"
+                               min="1"
+                               max="30"
+                               value="5"
+                               placeholder="5">
+                        <p style="font-size: 12px; color: var(--text-light); margin-top: 4px;">
+                            Time between visits to consider them separate sessions (default: 5 minutes)
+                        </p>
+                    </div>
+
+                    <button type="submit">Save Settings</button>
+                    <div id="save-message" style="margin-left: 12px; display: inline-block; color: var(--success);"></div>
+                </form>
+            </div>
+
+            <div class="card">
+                <h3>Database Info</h3>
+                <p style="color: var(--text-light); margin-bottom: 12px;">
+                    Database location: <code style="background: var(--background); padding: 4px 8px; border-radius: 4px;">data/activity.db</code>
+                </p>
+                <p style="color: var(--text-light);">
+                    All your activity data is stored locally on your computer. No data is sent to external servers.
+                </p>
+            </div>
+
+            <div class="card">
+                <h3>Privacy Information</h3>
+                <ul style="margin-left: 24px; color: var(--text-light); line-height: 1.8;">
+                    <li>All data stays on your machine</li>
+                    <li>No network calls or telemetry</li>
+                    <li>Only tracks application names and window titles</li>
+                    <li>Idle detection uses system HID time (no keystroke logging)</li>
+                    <li>You can delete the database file at any time</li>
+                </ul>
+            </div>
+        </main>
+
+        <footer>
+            <p>Privacy-focused • All data stored locally</p>
+        </footer>
+    </div>
+
+    <script>
+        // Load current settings
+        async function loadSettings() {
+            try {
+                const response = await fetch('/api/settings');
+                const settings = await response.json();
+
+                document.getElementById('polling_interval').value = settings.polling_interval_minutes || 5;
+                document.getElementById('session_gap').value = settings.session_gap_minutes || 5;
+            } catch (error) {
+                console.error('Error loading settings:', error);
+            }
+        }
+
+        // Save settings
+        document.getElementById('settings-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            const formData = {
+                polling_interval_minutes: parseInt(document.getElementById('polling_interval').value),
+                session_gap_minutes: parseInt(document.getElementById('session_gap').value)
+            };
+
+            try {
+                const response = await fetch('/api/settings', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(formData)
+                });
+
+                if (response.ok) {
+                    const messageEl = document.getElementById('save-message');
+                    messageEl.textContent = '✓ Settings saved!';
+                    setTimeout(() => {
+                        messageEl.textContent = '';
+                    }, 3000);
+                } else {
+                    alert('Failed to save settings');
+                }
+            } catch (error) {
+                console.error('Error saving settings:', error);
+                alert('Failed to save settings');
+            }
+        });
+
+        // Load settings on page load
+        loadSettings();
+    </script>
+</body>
+</html>

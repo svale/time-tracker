@@ -1,0 +1,23 @@
+{
+  "name": "time-tracker",
+  "version": "1.0.0",
+  "description": "Privacy-focused time tracking for macOS",
+  "main": "daemon/index.js",
+  "scripts": {
+    "start": "node daemon/index.js",
+    "server": "node server/index.js",
+    "dev": "nodemon daemon/index.js",
+    "setup": "bash scripts/setup.sh"
+  },
+  "keywords": ["time-tracking", "productivity", "macos"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "sql.js": "^1.10.0",
+    "express": "^4.18.0",
+    "date-fns": "^3.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.0"
+  }
+}
