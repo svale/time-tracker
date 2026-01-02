@@ -500,6 +500,118 @@ body {
 }
 
 /* ==========================================================================
+   Date Navigation (Reports Page)
+   ========================================================================== */
+
+.date-navigation {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-xl);
+  margin-bottom: var(--spacing-xl);
+  box-shadow: var(--shadow-md);
+}
+
+.date-picker-header {
+  text-align: center;
+  margin-bottom: var(--spacing-lg);
+}
+
+.date-controls {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+  flex-wrap: wrap;
+}
+
+.editorial-date-input {
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  padding: 0.75rem 1rem;
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-cream);
+  color: var(--color-charcoal);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.editorial-date-input:hover {
+  border-color: var(--color-terracotta);
+}
+
+.editorial-date-input:focus {
+  outline: none;
+  border-color: var(--color-terracotta);
+  box-shadow: 0 0 0 3px rgba(200, 90, 58, 0.1);
+}
+
+.date-nav-btn {
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  font-weight: 500;
+  padding: 0.75rem 1.5rem;
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-cream);
+  color: var(--color-charcoal);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.date-nav-btn:hover:not(:disabled) {
+  border-color: var(--color-terracotta);
+  background: var(--color-surface);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
+}
+
+.date-nav-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.date-nav-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.date-nav-btn--today {
+  background: var(--color-terracotta);
+  color: white;
+  border-color: var(--color-terracotta-dark);
+  font-weight: 600;
+}
+
+.date-nav-btn--today:hover:not(:disabled) {
+  background: var(--color-terracotta-dark);
+  border-color: var(--color-terracotta-dark);
+}
+
+.selected-date-display {
+  text-align: center;
+  font-family: var(--font-display);
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: var(--color-charcoal);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md) 0;
+}
+
+.selected-date-display .separator-ornament {
+  color: var(--color-terracotta);
+  opacity: 0.5;
+  font-size: 1.25rem;
+}
+
+/* ==========================================================================
    Loading & Empty States
    ========================================================================== */
 

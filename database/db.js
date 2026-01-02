@@ -29,6 +29,18 @@ function runMigrations() {
     return;
   }
 
+  // Ensure schema_migrations table exists
+  try {
+    db.run(`
+      CREATE TABLE IF NOT EXISTS schema_migrations (
+        version INTEGER PRIMARY KEY,
+        applied_at INTEGER DEFAULT (strftime('%s', 'now') * 1000)
+      )
+    `);
+  } catch (error) {
+    console.error('Failed to create schema_migrations table:', error.message);
+  }
+
   // Get applied migrations
   let appliedMigrations = [];
   try {
@@ -38,7 +50,8 @@ function runMigrations() {
     }
     stmt.free();
   } catch (error) {
-    // schema_migrations table doesn't exist yet, first run
+    // If still fails, something is wrong
+    console.error('Failed to query schema_migrations:', error.message);
   }
 
   // Run pending migrations

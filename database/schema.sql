@@ -43,3 +43,9 @@ CREATE TABLE IF NOT EXISTS settings (
 INSERT OR IGNORE INTO settings (key, value) VALUES ('polling_interval_minutes', '5');
 INSERT OR IGNORE INTO settings (key, value) VALUES ('session_gap_minutes', '5');
 INSERT OR IGNORE INTO settings (key, value) VALUES ('excluded_domains', '[]');
+
+-- Migration tracking table
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version INTEGER PRIMARY KEY,
+    applied_at INTEGER DEFAULT (strftime('%s', 'now') * 1000)
+);

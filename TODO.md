@@ -326,6 +326,151 @@ curl "http://localhost:8765/api/daily-report?date=2026-01-02&project_id=1"
 
 ---
 
+## Phase 1.5: Historical Viewing & Enhanced Data
+
+**Goal:** Enable viewing historical data and capture page titles from browser history
+
+### 1.11 Historical Data Viewing (Reports Page)
+
+**Priority:** HIGH - Implement First
+
+- [ ] Create date navigation UI in reports.html
+  - [ ] HTML5 date picker with editorial styling
+  - [ ] Previous Day / Next Day buttons with ornamental separators (◆)
+  - [ ] "Today" quick link button
+  - [ ] Display selected date in Crimson Pro font
+- [ ] Add CSS styling for date controls
+  - [ ] `.date-navigation` - Container with cream background
+  - [ ] `.date-controls` - Flex layout, centered
+  - [ ] `.editorial-date-input` - Styled native date input
+  - [ ] `.selected-date-display` - Crimson Pro font, large text
+  - [ ] `.date-nav-btn` - Editorial button styling
+  - [ ] `.date-nav-btn--today` - Terracotta accent color
+- [ ] Implement JavaScript date logic
+  - [ ] `setDate(date)` function - Update current date, URL, and fetch data
+  - [ ] `fetchReportData(dateString)` - Parallel fetch from 3 endpoints
+  - [ ] Event handlers for date picker, prev/next, today button
+  - [ ] URL state management with pushState
+- [ ] Fetch data from API with date parameter
+  - [ ] `/api/daily-summary?date=YYYY-MM-DD`
+  - [ ] `/api/daily-report?date=YYYY-MM-DD`
+  - [ ] `/api/timeline?date=YYYY-MM-DD`
+- [ ] Reuse dashboard components (summary, activities, chart)
+  - [ ] Copy summary cards section (3-card layout)
+  - [ ] Copy activities list with project badges
+  - [ ] Copy hourly timeline chart
+  - [ ] Adapt text from "Today's Chronicle" to "Activity on [Date]"
+- [ ] Support URL state (?date=YYYY-MM-DD)
+  - [ ] Check query param on page load
+  - [ ] Update URL without page reload
+  - [ ] Bookmarkable/shareable URLs
+- [ ] Add loading and empty states
+  - [ ] Loading spinner while fetching
+  - [ ] "No activity recorded on this date" empty state
+- [ ] Optional: Add project filter to reports page
+
+**Success Criteria:**
+- [ ] Users can view any past day's activity
+- [ ] Date navigation is intuitive (picker + prev/next buttons)
+- [ ] All dashboard features work for historical dates
+- [ ] URLs are bookmarkable/shareable
+- [ ] Maintains editorial design aesthetic
+
+**Tests:**
+```bash
+# Start server
+npm run server
+
+# Test date navigation
+# - Load /reports - should show today by default
+# - Click Previous/Next - navigates days correctly
+# - Select date from picker - loads that date
+# - Click Today - returns to current day
+# - URL updates when date changes
+# - Refresh page - stays on same date
+# - Share URL with date - works correctly
+# - Empty state shows for dates with no data
+```
+
+**Files to Modify:**
+- `server/views/reports.html` - Complete implementation
+- `public/css/style.css` - Date navigation styles
+
+**No API Changes Needed!** All endpoints already support date parameters.
+
+---
+
+### 1.12 Page Title Storage
+
+**Priority:** LOWER - Implement Second (Optional)
+
+- [ ] Create migration 002_add_page_titles.sql
+  - [ ] ALTER TABLE activity_sessions ADD COLUMN page_title TEXT
+  - [ ] CREATE INDEX idx_sessions_title ON activity_sessions(page_title)
+- [ ] Update session aggregation to track titles
+  - [ ] Modify `aggregateIntoSessions()` in browser-history.js
+  - [ ] Add `titles` and `titleCounts` to session object
+  - [ ] Track title occurrences when extending sessions
+  - [ ] Add `getMostFrequentTitle()` helper function
+  - [ ] Determine most frequent title after aggregation
+- [ ] Modify insertSession to store page_title
+  - [ ] Add `page_title = null` parameter to insertSession()
+  - [ ] Update SQL INSERT statement
+  - [ ] Add to values array
+- [ ] Update getDailyReportAll to return page_title
+  - [ ] Add `s.page_title` or `GROUP_CONCAT(DISTINCT s.page_title)` to SELECT
+  - [ ] Return in results
+- [ ] Update API responses to include titles
+  - [ ] Modify `/api/daily-report` response
+  - [ ] Modify `/api/daily-summary` response
+  - [ ] Add `page_title` or `page_titles` field
+- [ ] Display titles in dashboard activities list
+  - [ ] Add title display below domain in `renderActivitiesTable()`
+  - [ ] Add `truncate()` helper function (max 60 chars)
+  - [ ] Use title attribute for hover (full text)
+- [ ] Add CSS styling for activity-title
+  - [ ] Small font, light color, italic
+  - [ ] Margin top for spacing
+- [ ] Test with Chrome (real titles) and Safari (URL-based)
+  - [ ] Verify Chrome titles captured
+  - [ ] Verify Safari shows URL-based titles
+  - [ ] Verify most frequent title chosen
+  - [ ] Verify old sessions (pre-migration) still work
+
+**Success Criteria:**
+- [ ] Chrome page titles captured and stored
+- [ ] Most frequently visited title chosen for sessions
+- [ ] Titles displayed below domains in UI
+- [ ] Safari gracefully handled (URL-based titles)
+- [ ] Old data (pre-migration) still works
+
+**Tests:**
+```bash
+# After migration
+sqlite3 data/activity.db "PRAGMA table_info(activity_sessions);"
+# Should see page_title column
+
+# After daemon runs
+sqlite3 data/activity.db "SELECT domain, page_title FROM activity_sessions ORDER BY start_time DESC LIMIT 10;"
+# Should see titles populated
+
+# Test API
+curl "http://localhost:8765/api/daily-report" | python3 -m json.tool
+# Should include page_title field
+```
+
+**Files to Modify:**
+- `database/migrations/002_add_page_titles.sql` - NEW
+- `daemon/browser-history.js` - Update aggregation
+- `daemon/tracker.js` - Pass page_title
+- `database/db.js` - Update insertSession(), getDailyReportAll()
+- `server/routes/api.js` - Include page_title in responses
+- `server/views/dashboard.html` - Display titles
+- `server/views/reports.html` - Display titles (after 1.11)
+- `public/css/style.css` - Add .activity-title styles
+
+---
+
 ## Phase 2: Google Calendar Integration
 
 **Goal:** Sync Google Calendar events and assign to projects via keywords

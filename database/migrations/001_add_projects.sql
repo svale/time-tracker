@@ -29,9 +29,3 @@ CREATE INDEX IF NOT EXISTS idx_project_domains_lookup ON project_domains(domain)
 ALTER TABLE activity_sessions ADD COLUMN project_id INTEGER REFERENCES projects(id);
 
 CREATE INDEX IF NOT EXISTS idx_sessions_project ON activity_sessions(project_id);
-
--- Migration tracking table
-CREATE TABLE IF NOT EXISTS schema_migrations (
-    version INTEGER PRIMARY KEY,
-    applied_at INTEGER DEFAULT (strftime('%s', 'now') * 1000)
-);
