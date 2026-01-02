@@ -334,6 +334,9 @@ async function reloadDatabase() {
   }
 
   db = new SQL.Database(buffer);
+
+  // Run pending migrations after reload
+  runMigrations();
 }
 
 /**
