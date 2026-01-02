@@ -8,6 +8,7 @@ const path = require('path');
 const db = require('../database/db');
 const api = require('./routes/api');
 const pages = require('./routes/pages');
+const projects = require('./routes/projects');
 
 const app = express();
 const PORT = process.env.PORT || 8765;
@@ -26,6 +27,7 @@ async function initServer() {
 
   // Routes
   app.use('/api', api);
+  app.use('/api', projects);
   app.use('/', pages);
 
   // 404 handler

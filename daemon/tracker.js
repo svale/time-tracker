@@ -6,6 +6,7 @@
 
 const db = require('../database/db');
 const browserHistory = require('./browser-history');
+const projectMatcher = require('../server/utils/project-matcher');
 
 let trackingInterval = null;
 let lastCheckTimestamp = null;
@@ -39,13 +40,17 @@ async function processHistory() {
     for (const session of sessions) {
       // Only save sessions that are at least 1 second
       if (session.duration_seconds >= 1) {
+        // Try to match domain to a project
+        const projectId = projectMatcher.matchDomain(session.domain);
+
         db.insertSession({
           start_time: session.start_time,
           end_time: session.end_time,
           duration_seconds: session.duration_seconds,
           app_name: session.browser,
           app_bundle_id: session.browser === 'Chrome' ? 'com.google.Chrome' : 'com.apple.Safari',
-          domain: session.domain
+          domain: session.domain,
+          project_id: projectId // Auto-assign project if domain matches
         });
         savedCount++;
 
@@ -54,7 +59,8 @@ async function processHistory() {
           const minutes = Math.floor(session.duration_seconds / 60);
           const seconds = session.duration_seconds % 60;
           const timeStr = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
-          console.log(`  → ${session.domain} (${session.browser}) - ${timeStr}`);
+          const projectInfo = projectId ? ` [Project ${projectId}]` : '';
+          console.log(`  → ${session.domain} (${session.browser}) - ${timeStr}${projectInfo}`);
         }
       }
     }

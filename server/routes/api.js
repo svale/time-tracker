@@ -10,6 +10,20 @@ const { format } = require('date-fns');
 const router = express.Router();
 
 /**
+ * Middleware: Reload database before each API request
+ * This ensures we always have the latest data from disk (daemon updates)
+ */
+router.use(async (req, res, next) => {
+  try {
+    await db.reloadDatabase();
+    next();
+  } catch (error) {
+    console.error('Error reloading database:', error);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+/**
  * Helper: Format seconds to human-readable time
  */
 function formatDuration(seconds) {

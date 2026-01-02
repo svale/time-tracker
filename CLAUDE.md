@@ -113,3 +113,17 @@ Key settings:
   - Safari: `~/Library/Safari/History.db`
 - LaunchAgent plist requires absolute paths to node and daemon script
 - No accessibility permissions needed (key privacy feature)
+
+## Active Development
+
+**Current Workplan:** See [TODO.md](TODO.md) for the active development plan with detailed tasks, success criteria, and testing steps.
+
+**Major Features in Development:**
+1. **Projects** - Organize time tracking by projects with automatic domain-based categorization
+2. **Google Calendar Integration** - Sync calendar events to track meeting time
+3. **GitHub Integration** - Track development activity via commits and PRs
+4. **Workday Tracking** - Calculate and display daily work hours across all data sources
+
+**Implementation Status:** Refer to TODO.md for current progress and task completion status.
+
+**Detailed Plan:** See `.claude/plans/transient-discovering-dragon.md` for comprehensive design documentation.

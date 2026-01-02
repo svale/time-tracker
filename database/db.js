@@ -8,6 +8,69 @@ const SCHEMA_PATH = path.join(__dirname, 'schema.sql');
 let db = null;
 
 /**
+ * Run pending database migrations
+ */
+function runMigrations() {
+  if (!db) throw new Error('Database not initialized');
+
+  const MIGRATIONS_DIR = path.join(__dirname, 'migrations');
+
+  // Create migrations directory if it doesn't exist
+  if (!fs.existsSync(MIGRATIONS_DIR)) {
+    return;
+  }
+
+  // Get all migration files
+  const migrationFiles = fs.readdirSync(MIGRATIONS_DIR)
+    .filter(f => f.endsWith('.sql'))
+    .sort(); // Ensure they run in order
+
+  if (migrationFiles.length === 0) {
+    return;
+  }
+
+  // Get applied migrations
+  let appliedMigrations = [];
+  try {
+    const stmt = db.prepare('SELECT version FROM schema_migrations ORDER BY version');
+    while (stmt.step()) {
+      appliedMigrations.push(stmt.getAsObject().version);
+    }
+    stmt.free();
+  } catch (error) {
+    // schema_migrations table doesn't exist yet, first run
+  }
+
+  // Run pending migrations
+  migrationFiles.forEach(filename => {
+    const version = parseInt(filename.split('_')[0], 10);
+
+    if (appliedMigrations.includes(version)) {
+      return; // Already applied
+    }
+
+    console.log(`Running migration ${version}: ${filename}`);
+    const migrationSQL = fs.readFileSync(path.join(MIGRATIONS_DIR, filename), 'utf8');
+
+    try {
+      db.run(migrationSQL);
+
+      // Record migration as applied
+      const stmt = db.prepare('INSERT INTO schema_migrations (version) VALUES (?)');
+      stmt.run([version]);
+      stmt.free();
+
+      console.log(`✓ Migration ${version} applied`);
+    } catch (error) {
+      console.error(`✗ Migration ${version} failed:`, error.message);
+      throw error;
+    }
+  });
+
+  saveDatabase();
+}
+
+/**
  * Initialize the database
  */
 async function initDatabase() {
@@ -30,6 +93,9 @@ async function initDatabase() {
   } else {
     console.log('✓ Database loaded');
   }
+
+  // Run pending migrations
+  runMigrations();
 
   return db;
 }
@@ -66,15 +132,15 @@ function insertEvent({ timestamp, app_name, app_bundle_id, window_title, is_idle
 /**
  * Insert an activity session
  */
-function insertSession({ start_time, end_time, duration_seconds, app_name, app_bundle_id, domain = null }) {
+function insertSession({ start_time, end_time, duration_seconds, app_name, app_bundle_id, domain = null, project_id = null }) {
   if (!db) throw new Error('Database not initialized');
 
   const stmt = db.prepare(`
-    INSERT INTO activity_sessions (start_time, end_time, duration_seconds, app_name, app_bundle_id, domain)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO activity_sessions (start_time, end_time, duration_seconds, app_name, app_bundle_id, domain, project_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `);
 
-  stmt.run([start_time, end_time, duration_seconds, app_name, app_bundle_id, domain]);
+  stmt.run([start_time, end_time, duration_seconds, app_name, app_bundle_id, domain, project_id]);
   stmt.free();
 
   saveDatabase();
@@ -229,6 +295,230 @@ function getRecentEvents(limit = 10) {
 }
 
 /**
+ * Reload database from disk
+ * This is needed because sql.js keeps database in memory
+ * Must reload to see changes from other processes (e.g., daemon)
+ */
+async function reloadDatabase() {
+  if (!db) {
+    await initDatabase();
+    return;
+  }
+
+  // Close current instance without saving
+  db.close();
+
+  // Reload from disk
+  const SQL = await initSqlJs();
+  let buffer = null;
+  if (fs.existsSync(DB_PATH)) {
+    buffer = fs.readFileSync(DB_PATH);
+  }
+
+  db = new SQL.Database(buffer);
+}
+
+/**
+ * Get all projects (non-archived)
+ */
+function getProjects() {
+  if (!db) throw new Error('Database not initialized');
+
+  const results = [];
+  const stmt = db.prepare('SELECT * FROM projects WHERE is_archived = 0 ORDER BY name');
+
+  while (stmt.step()) {
+    results.push(stmt.getAsObject());
+  }
+  stmt.free();
+
+  return results;
+}
+
+/**
+ * Get single project by ID
+ */
+function getProject(id) {
+  if (!db) throw new Error('Database not initialized');
+
+  const stmt = db.prepare('SELECT * FROM projects WHERE id = ?');
+  stmt.bind([id]);
+
+  let result = null;
+  if (stmt.step()) {
+    result = stmt.getAsObject();
+  }
+  stmt.free();
+
+  return result;
+}
+
+/**
+ * Create new project
+ */
+function createProject({ name, description = null, color = '#3B82F6' }) {
+  if (!db) throw new Error('Database not initialized');
+
+  const stmt = db.prepare(`
+    INSERT INTO projects (name, description, color)
+    VALUES (?, ?, ?)
+  `);
+
+  stmt.run([name, description, color]);
+  stmt.free();
+
+  // Get the inserted ID
+  const idStmt = db.prepare('SELECT last_insert_rowid() as id');
+  idStmt.step();
+  const id = idStmt.getAsObject().id;
+  idStmt.free();
+
+  saveDatabase();
+  return id;
+}
+
+/**
+ * Update project
+ */
+function updateProject(id, { name, description, color }) {
+  if (!db) throw new Error('Database not initialized');
+
+  const updates = [];
+  const values = [];
+
+  if (name !== undefined) {
+    updates.push('name = ?');
+    values.push(name);
+  }
+  if (description !== undefined) {
+    updates.push('description = ?');
+    values.push(description);
+  }
+  if (color !== undefined) {
+    updates.push('color = ?');
+    values.push(color);
+  }
+
+  if (updates.length === 0) return;
+
+  updates.push('updated_at = ?');
+  values.push(Date.now());
+  values.push(id);
+
+  const stmt = db.prepare(`
+    UPDATE projects
+    SET ${updates.join(', ')}
+    WHERE id = ?
+  `);
+
+  stmt.run(values);
+  stmt.free();
+
+  saveDatabase();
+}
+
+/**
+ * Archive project (soft delete)
+ */
+function archiveProject(id) {
+  if (!db) throw new Error('Database not initialized');
+
+  const stmt = db.prepare('UPDATE projects SET is_archived = 1, updated_at = ? WHERE id = ?');
+  stmt.run([Date.now(), id]);
+  stmt.free();
+
+  saveDatabase();
+}
+
+/**
+ * Get all domains for a project
+ */
+function getProjectDomains(projectId) {
+  if (!db) throw new Error('Database not initialized');
+
+  const results = [];
+  const stmt = db.prepare('SELECT * FROM project_domains WHERE project_id = ?');
+  stmt.bind([projectId]);
+
+  while (stmt.step()) {
+    results.push(stmt.getAsObject());
+  }
+  stmt.free();
+
+  return results;
+}
+
+/**
+ * Add domain mapping to project
+ */
+function addProjectDomain(projectId, domain) {
+  if (!db) throw new Error('Database not initialized');
+
+  const stmt = db.prepare(`
+    INSERT INTO project_domains (project_id, domain)
+    VALUES (?, ?)
+  `);
+
+  try {
+    stmt.run([projectId, domain]);
+    stmt.free();
+    saveDatabase();
+    return true;
+  } catch (error) {
+    stmt.free();
+    if (error.message.includes('UNIQUE')) {
+      throw new Error('Domain already mapped to this project');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Remove domain mapping
+ */
+function removeProjectDomain(id) {
+  if (!db) throw new Error('Database not initialized');
+
+  const stmt = db.prepare('DELETE FROM project_domains WHERE id = ?');
+  stmt.run([id]);
+  stmt.free();
+
+  saveDatabase();
+}
+
+/**
+ * Assign session to project
+ */
+function assignSessionToProject(sessionId, projectId) {
+  if (!db) throw new Error('Database not initialized');
+
+  const stmt = db.prepare('UPDATE activity_sessions SET project_id = ? WHERE id = ?');
+  stmt.run([projectId, sessionId]);
+  stmt.free();
+
+  saveDatabase();
+}
+
+/**
+ * Find project ID by domain
+ */
+function findProjectByDomain(domain) {
+  if (!db) throw new Error('Database not initialized');
+  if (!domain) return null;
+
+  const stmt = db.prepare('SELECT project_id FROM project_domains WHERE domain = ? LIMIT 1');
+  stmt.bind([domain]);
+
+  let projectId = null;
+  if (stmt.step()) {
+    projectId = stmt.getAsObject().project_id;
+  }
+  stmt.free();
+
+  return projectId;
+}
+
+/**
  * Close database connection
  */
 function closeDatabase() {
@@ -242,6 +532,7 @@ function closeDatabase() {
 module.exports = {
   initDatabase,
   saveDatabase,
+  reloadDatabase,
   insertEvent,
   insertSession,
   getDailyReport,
@@ -250,5 +541,16 @@ module.exports = {
   getSetting,
   setSetting,
   getRecentEvents,
-  closeDatabase
+  closeDatabase,
+  // Project functions
+  getProjects,
+  getProject,
+  createProject,
+  updateProject,
+  archiveProject,
+  getProjectDomains,
+  addProjectDomain,
+  removeProjectDomain,
+  assignSessionToProject,
+  findProjectByDomain
 };
