@@ -5,6 +5,7 @@
 
 const express = require('express');
 const path = require('path');
+const nunjucks = require('nunjucks');
 const db = require('../database/db');
 const api = require('./routes/api');
 const pages = require('./routes/pages');
@@ -21,6 +22,16 @@ async function initServer() {
   // Initialize database
   console.log('Initializing database...');
   await db.initDatabase();
+
+  // Configure Nunjucks templating
+  const viewsPath = path.join(__dirname, 'views');
+  nunjucks.configure(viewsPath, {
+    autoescape: true,
+    express: app,
+    watch: true, // Auto-reload templates in development
+    noCache: process.env.NODE_ENV !== 'production'
+  });
+  app.set('view engine', 'njk');
 
   // Middleware
   app.use(express.json());

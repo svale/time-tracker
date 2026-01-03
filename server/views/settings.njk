@@ -1,0 +1,406 @@
+{% extends "layouts/main.njk" %}
+
+{% block title %}Time Tracker - Settings{% endblock %}
+
+{% block content %}
+            <!-- Decorative separator -->
+            <div class="section-separator">
+                <span class="separator-ornament">◆</span>
+            </div>
+
+            <section class="summary-section">
+                <div class="section-header">
+                    <h2 class="section-title">Configuration</h2>
+                    <p class="section-description">Customize your time tracking preferences</p>
+                </div>
+
+                <!-- Tracking Settings -->
+                <div class="activities-container settings-form-section">
+                    <h3 class="settings-form-title">
+                        Tracking Settings
+                    </h3>
+                    <form id="settings-form">
+                        <div class="form-group">
+                            <label for="polling_interval">Polling Interval (minutes)</label>
+                            <input type="number"
+                                   id="polling_interval"
+                                   name="polling_interval_minutes"
+                                   min="1"
+                                   max="60"
+                                   value="5"
+                                   placeholder="5">
+                            <p class="settings-form-help">
+                                How often to check browser history (default: 5 minutes). Requires daemon restart to take effect.
+                            </p>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="session_gap">Session Gap (minutes)</label>
+                            <input type="number"
+                                   id="session_gap"
+                                   name="session_gap_minutes"
+                                   min="1"
+                                   max="30"
+                                   value="5"
+                                   placeholder="5">
+                            <p class="settings-form-help">
+                                Time between visits to consider them separate sessions (default: 5 minutes)
+                            </p>
+                        </div>
+
+                        <div class="settings-form-actions">
+                            <button type="submit">Save Settings</button>
+                            <div id="save-message" class="settings-message"></div>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Calendar Subscriptions -->
+                <div class="activities-container settings-form-section">
+                    <h3 class="settings-form-title mb-2">
+                        Calendar Subscriptions
+                    </h3>
+                    <p class="section-description mb-3">
+                        Track calendar events from Google, Outlook, Apple Calendar, or any iCal-compatible calendar.
+                    </p>
+
+                    <!-- Add Calendar Form -->
+                    <div id="add-calendar-form" class="calendar-card">
+                        <h4 class="calendar-card-title mb-2">
+                            Add Calendar
+                        </h4>
+                        <form id="calendar-form">
+                            <div class="form-group">
+                                <label for="calendar-name">Calendar Name</label>
+                                <input type="text"
+                                       id="calendar-name"
+                                       placeholder="e.g., Work Calendar, Personal"
+                                       required>
+                            </div>
+                            <div class="form-group">
+                                <label for="calendar-url">iCal Feed URL</label>
+                                <input type="url"
+                                       id="calendar-url"
+                                       placeholder="https://calendar.google.com/calendar/ical/..."
+                                       required>
+                                <details style="margin-top: 12px;">
+                                    <summary style="cursor: pointer; color: var(--color-terracotta); font-size: 0.9rem; user-select: none;">
+                                        How to get your iCal URL
+                                    </summary>
+                                    <div style="margin-top: 12px; padding-left: 16px; border-left: 3px solid var(--color-border); color: var(--color-warm-gray); font-size: 0.85rem; line-height: 1.6;">
+                                        <p style="margin-bottom: 8px;"><strong>Google Calendar:</strong></p>
+                                        <ol style="margin-left: 16px; margin-bottom: 12px;">
+                                            <li>Open Google Calendar</li>
+                                            <li>Click ⋮ next to your calendar → Settings</li>
+                                            <li>Scroll to "Integrate calendar"</li>
+                                            <li>Copy the "Secret address in iCal format"</li>
+                                        </ol>
+                                        <p style="margin-bottom: 8px;"><strong>Outlook/Microsoft 365:</strong></p>
+                                        <ol style="margin-left: 16px; margin-bottom: 12px;">
+                                            <li>Open Outlook Calendar</li>
+                                            <li>Settings → View all Outlook settings → Calendar → Shared calendars</li>
+                                            <li>Publish calendar → Copy ICS link</li>
+                                        </ol>
+                                        <p style="margin-bottom: 8px;"><strong>Apple Calendar (iCloud):</strong></p>
+                                        <ol style="margin-left: 16px;">
+                                            <li>Open iCloud.com → Calendar</li>
+                                            <li>Click share icon next to calendar</li>
+                                            <li>Enable "Public Calendar" → Copy link</li>
+                                        </ol>
+                                    </div>
+                                </details>
+                            </div>
+                            <div class="settings-form-actions">
+                                <button type="submit">Add Calendar</button>
+                                <div id="calendar-message" class="settings-message"></div>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- Calendar List -->
+                    <div id="calendar-list">
+                        <div class="loading-state">
+                            Loading calendars...
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Database Info -->
+                <div class="activities-container settings-form-section">
+                    <h3 class="settings-form-title">
+                        Database Information
+                    </h3>
+                    <p class="section-description mb-2">
+                        Database location:
+                        <code class="form-input" style="display: inline; width: auto; padding: 6px 12px; font-size: 0.85rem;">
+                            data/activity.db
+                        </code>
+                    </p>
+                    <p class="section-description">
+                        All your activity data is stored locally on your computer in a SQLite database. No data is sent to external servers.
+                    </p>
+                </div>
+
+                <!-- Privacy Information -->
+                <div class="activities-container">
+                    <h3 class="settings-form-title">
+                        Privacy Principles
+                    </h3>
+                    <ul class="section-description" style="margin-left: 24px; line-height: 2;">
+                        <li>All data stays on your machine — nothing is transmitted over the network</li>
+                        <li>No telemetry, analytics, or tracking of any kind</li>
+                        <li>Only reads browser history files (Chrome and Safari)</li>
+                        <li>No accessibility permissions required (unlike traditional time trackers)</li>
+                        <li>You can delete the database file at any time without consequences</li>
+                        <li>Open source — inspect the code yourself</li>
+                    </ul>
+                </div>
+            </section>
+{% endblock %}
+
+{% block scripts %}
+
+    <script>
+        // Load current settings
+        async function loadSettings() {
+            try {
+                const response = await fetch('/api/settings');
+                const settings = await response.json();
+
+                document.getElementById('polling_interval').value = settings.polling_interval_minutes || 5;
+                document.getElementById('session_gap').value = settings.session_gap_minutes || 5;
+            } catch (error) {
+                console.error('Error loading settings:', error);
+            }
+        }
+
+        // Save settings
+        document.getElementById('settings-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            const formData = {
+                polling_interval_minutes: parseInt(document.getElementById('polling_interval').value),
+                session_gap_minutes: parseInt(document.getElementById('session_gap').value)
+            };
+
+            try {
+                const response = await fetch('/api/settings', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(formData)
+                });
+
+                if (response.ok) {
+                    const messageEl = document.getElementById('save-message');
+                    messageEl.textContent = '✓ Settings saved successfully!';
+                    setTimeout(() => {
+                        messageEl.textContent = '';
+                    }, 3000);
+                } else {
+                    alert('Failed to save settings');
+                }
+            } catch (error) {
+                console.error('Error saving settings:', error);
+                alert('Failed to save settings');
+            }
+        });
+
+        // Load settings on page load
+        loadSettings();
+
+        // ===================================
+        // Calendar Subscription Management
+        // ===================================
+
+        let calendars = [];
+
+        // Load calendar subscriptions
+        async function loadCalendars() {
+            try {
+                const response = await fetch('/api/integrations/calendars');
+                calendars = await response.json();
+                renderCalendars();
+            } catch (error) {
+                console.error('Error loading calendars:', error);
+                document.getElementById('calendar-list').innerHTML = `
+                    <div style="text-align: center; padding: 40px; color: var(--color-warm-gray); font-style: italic;">
+                        Failed to load calendars
+                    </div>
+                `;
+            }
+        }
+
+        // Render calendar list
+        function renderCalendars() {
+            const container = document.getElementById('calendar-list');
+
+            if (calendars.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <p class="empty-message">No calendars added yet.</p>
+                        <p class="empty-hint">Add your first calendar above.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const html = calendars.map(cal => {
+                const providerIcon = {
+                    'google': '🗓️',
+                    'outlook': '📅',
+                    'apple': '📆',
+                    'other': '📋'
+                }[cal.provider] || '📋';
+
+                const lastSyncText = cal.last_sync ?
+                    new Date(cal.last_sync).toLocaleString() : 'Never';
+
+                const statusColor = cal.is_active ? 'var(--color-success)' : 'var(--color-warm-gray)';
+                const statusText = cal.is_active ? 'Active' : 'Inactive';
+
+                // Button styling
+                const toggleBtnClass = cal.is_active ? 'btn' : 'btn btn-primary';
+                const toggleBtnStyle = cal.is_active
+                    ? 'background: var(--color-warm-gray); color: white; border-color: var(--color-warm-gray);'
+                    : 'background: var(--color-success); color: white; border-color: var(--color-success);';
+                const toggleBtnText = cal.is_active ? 'Pause' : 'Activate';
+
+                return `
+                    <div class="calendar-card">
+                        <div class="calendar-card-header">
+                            <div>
+                                <h4 class="calendar-card-title">
+                                    ${providerIcon} ${cal.name}
+                                </h4>
+                                <div class="calendar-card-meta">
+                                    Provider: ${cal.provider.charAt(0).toUpperCase() + cal.provider.slice(1)}
+                                    <span style="margin: 0 8px;">•</span>
+                                    <span style="color: ${statusColor}; font-weight: 600;">${statusText}</span>
+                                </div>
+                                <div class="calendar-card-meta">
+                                    Last sync: ${lastSyncText}
+                                </div>
+                                ${cal.last_error ? `
+                                    <div class="calendar-card-error">
+                                        ⚠ Error: ${cal.last_error}
+                                    </div>
+                                ` : ''}
+                            </div>
+                            <div class="calendar-card-actions">
+                                <button onclick="toggleCalendar(${cal.id}, ${!cal.is_active})"
+                                        class="${toggleBtnClass}" style="${toggleBtnStyle} padding: 8px 16px; font-size: 0.85rem;">
+                                    ${toggleBtnText}
+                                </button>
+                                <button onclick="syncCalendar(${cal.id})"
+                                        class="btn" style="background: var(--color-charcoal); color: white; border-color: var(--color-charcoal); padding: 8px 16px; font-size: 0.85rem;">
+                                    Sync Now
+                                </button>
+                                <button onclick="deleteCalendar(${cal.id})"
+                                        class="btn btn-danger" style="padding: 8px 16px; font-size: 0.85rem;">
+                                    Remove
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            container.innerHTML = html;
+        }
+
+        // Add calendar
+        document.getElementById('calendar-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            const name = document.getElementById('calendar-name').value.trim();
+            const ical_url = document.getElementById('calendar-url').value.trim();
+
+            const messageEl = document.getElementById('calendar-message');
+            messageEl.textContent = 'Adding calendar...';
+
+            try {
+                const response = await fetch('/api/integrations/calendars', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, ical_url })
+                });
+
+                if (response.ok) {
+                    messageEl.textContent = '✓ Calendar added successfully!';
+                    document.getElementById('calendar-form').reset();
+                    setTimeout(() => {
+                        messageEl.textContent = '';
+                    }, 3000);
+                    await loadCalendars();
+                } else {
+                    const error = await response.json();
+                    messageEl.textContent = '✗ ' + (error.error || 'Failed to add calendar');
+                    messageEl.style.color = 'var(--color-terracotta)';
+                }
+            } catch (error) {
+                console.error('Error adding calendar:', error);
+                messageEl.textContent = '✗ Failed to add calendar';
+                messageEl.style.color = 'var(--color-terracotta)';
+            }
+        });
+
+        // Toggle calendar active status
+        async function toggleCalendar(id, isActive) {
+            try {
+                const response = await fetch(`/api/integrations/calendars/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ is_active: isActive })
+                });
+
+                if (response.ok) {
+                    await loadCalendars();
+                } else {
+                    alert('Failed to update calendar');
+                }
+            } catch (error) {
+                console.error('Error toggling calendar:', error);
+                alert('Failed to update calendar');
+            }
+        }
+
+        // Sync calendar manually
+        async function syncCalendar(id) {
+            try {
+                const response = await fetch(`/api/integrations/calendars/${id}/sync`, {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    alert('Calendar sync triggered! Check back in a moment.');
+                    setTimeout(loadCalendars, 2000);
+                } else {
+                    alert('Failed to sync calendar');
+                }
+            } catch (error) {
+                console.error('Error syncing calendar:', error);
+                alert('Failed to sync calendar');
+            }
+        }
+
+        // Delete calendar
+        async function deleteCalendar(id) {
+            if (!confirm('Are you sure you want to remove this calendar? All associated events will be deleted.')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/integrations/calendars/${id}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    await loadCalendars();
+                } else {
+                    alert('Failed to remove calendar');
+                }
+            } catch (error) {
+                console.error('Error deleting calendar:', error);
+{% endblock %}

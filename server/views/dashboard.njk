@@ -1,0 +1,378 @@
+{% extends "layouts/main.njk" %}
+
+{% block title %}Time Tracker - Dashboard{% endblock %}
+
+{% block head %}
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+            <!-- Current time display -->
+            <div class="time-display" id="current-time-display">
+                <div class="time-label">Current Time</div>
+                <div class="time-value" id="current-time"></div>
+                <div class="date-value" id="current-date"></div>
+            </div>
+
+            <!-- Project Filter -->
+            <div class="filter-section">
+                <label for="project-filter">Filter by Project:</label>
+                <select id="project-filter" onchange="applyProjectFilter()">
+                    <option value="">All Projects</option>
+                </select>
+            </div>
+
+            <!-- Decorative separator -->
+            <div class="section-separator">
+                <span class="separator-ornament">◆</span>
+            </div>
+
+            <!-- Summary section -->
+            <section class="summary-section">
+                <h2 class="section-title">Today's Chronicle</h2>
+                <div id="summary-cards"
+                     hx-get="/api/daily-summary"
+                     hx-trigger="load, every 60s"
+                     hx-swap="innerHTML">
+                    <div class="loading-state">
+                        <div class="loading-spinner"></div>
+                        <p>Gathering temporal data...</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Timeline visualization -->
+            <section class="timeline-section">
+                <div class="section-header">
+                    <h2 class="section-title">Hourly Distribution</h2>
+                    <p class="section-description">Your activity pattern throughout the day</p>
+                </div>
+                <div class="chart-container">
+                    <canvas id="timeline-chart"></canvas>
+                </div>
+            </section>
+
+            <!-- Activities list -->
+            <section class="activities-section">
+                <div class="section-header">
+                    <h2 class="section-title">Domain Activity Log</h2>
+                    <p class="section-description">Tracked sessions from your browser history</p>
+                </div>
+                <div class="activities-container"
+                     id="activities-table"
+                     hx-get="/api/daily-report"
+                     hx-trigger="load, every 60s"
+                     hx-swap="innerHTML">
+                    <div class="loading-state">
+                        <div class="loading-spinner"></div>
+                        <p>Loading activity log...</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Calendar Events -->
+            <section class="activities-section mt-4">
+                <div class="section-header">
+                    <h2 class="section-title">Calendar Events</h2>
+                    <p class="section-description">Scheduled meetings and events from your calendar feeds</p>
+                </div>
+                <div class="activities-container" id="calendar-events">
+                    <div class="loading-state">
+                        <div class="loading-spinner"></div>
+                        <p>Loading calendar events...</p>
+                    </div>
+                </div>
+            </section>
+{% endblock %}
+
+{% block scripts %}
+    <script src="/js/app.js"></script>
+    <script>
+        let currentProjectFilter = '';
+
+        // Update current time display
+        function updateCurrentTime() {
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString('en-US', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false
+            });
+            const dateStr = now.toLocaleDateString('en-US', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+
+            const timeEl = document.getElementById('current-time');
+            const dateEl = document.getElementById('current-date');
+
+            if (timeEl) timeEl.textContent = timeStr;
+            if (dateEl) dateEl.textContent = dateStr;
+        }
+
+        // Update time every second
+        updateCurrentTime();
+        setInterval(updateCurrentTime, 1000);
+
+        // Load projects for filter dropdown
+        async function loadProjects() {
+            try {
+                const response = await fetch('/api/projects');
+                const projects = await response.json();
+
+                const filterSelect = document.getElementById('project-filter');
+                projects.forEach(project => {
+                    const option = document.createElement('option');
+                    option.value = project.id;
+                    option.textContent = project.name;
+                    filterSelect.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Error loading projects:', error);
+            }
+        }
+
+        // Apply project filter
+        function applyProjectFilter() {
+            currentProjectFilter = document.getElementById('project-filter').value;
+
+            // Reload data with filter
+            const summaryUrl = currentProjectFilter
+                ? `/api/daily-summary?project_id=${currentProjectFilter}`
+                : '/api/daily-summary';
+            const reportUrl = currentProjectFilter
+                ? `/api/daily-report?project_id=${currentProjectFilter}`
+                : '/api/daily-report';
+
+            // Update HTMX endpoints
+            const summaryCards = document.getElementById('summary-cards');
+            const activitiesTable = document.getElementById('activities-table');
+
+            if (summaryCards) {
+                summaryCards.setAttribute('hx-get', summaryUrl);
+                htmx.trigger(summaryCards, 'load');
+            }
+
+            if (activitiesTable) {
+                activitiesTable.setAttribute('hx-get', reportUrl);
+                htmx.trigger(activitiesTable, 'load');
+            }
+        }
+
+        // Load projects on page load
+        loadProjects();
+
+        // Handle HTMX responses
+        document.body.addEventListener('htmx:afterSwap', function(event) {
+            if (event.detail.target.id === 'summary-cards') {
+                renderSummaryCards(event);
+            } else if (event.detail.target.id === 'activities-table') {
+                renderActivitiesTable(event);
+            }
+        });
+
+        function renderSummaryCards(event) {
+            const xhr = event.detail.xhr;
+            const data = JSON.parse(xhr.responseText);
+
+            const html = `
+                <div class="summary-grid">
+                    <div class="stat-card stat-card--primary">
+                        <div class="stat-ornament">⟡</div>
+                        <div class="stat-value">${data.total_time}</div>
+                        <div class="stat-label">Total Active Time</div>
+                        <div class="stat-detail">${data.total_sessions} sessions recorded</div>
+                    </div>
+                    <div class="stat-card stat-card--secondary">
+                        <div class="stat-ornament">⟡</div>
+                        <div class="stat-value">${data.top_activities.length}</div>
+                        <div class="stat-label">Domains Visited</div>
+                        <div class="stat-detail">From browser history</div>
+                    </div>
+                    <div class="stat-card stat-card--accent">
+                        <div class="stat-ornament">⟡</div>
+                        <div class="stat-value">${data.top_activities[0] ? data.top_activities[0].domain || data.top_activities[0].app : '—'}</div>
+                        <div class="stat-label">Most Visited</div>
+                        <div class="stat-detail">${data.top_activities[0] ? data.top_activities[0].time : 'No data'}</div>
+                    </div>
+                </div>
+            `;
+
+            event.detail.target.innerHTML = html;
+
+            // Update timeline chart
+            updateTimelineChart();
+        }
+
+        function renderActivitiesTable(event) {
+            const xhr = event.detail.xhr;
+            const data = JSON.parse(xhr.responseText);
+
+            if (data.activities.length === 0) {
+                event.detail.target.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-ornament">◇</div>
+                        <p class="empty-message">No activity recorded yet today.</p>
+                        <p class="empty-hint">Browser history is checked every 5 minutes.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            let html = '<div class="activities-list">';
+
+            data.activities.forEach((activity, index) => {
+                const displayName = activity.domain || activity.app_name;
+                const browserName = activity.app_name;
+                const animationDelay = index * 0.05;
+
+                // Project badge HTML
+                let projectBadge = '';
+                if (activity.project_name && activity.project_color) {
+                    projectBadge = `
+                        <span class="project-badge" style="background-color: ${activity.project_color};">
+                            ${escapeHtml(activity.project_name)}
+                        </span>
+                    `;
+                }
+
+                // Page title HTML (take first title if multiple, truncate if too long)
+                let pageTitleHtml = '';
+                if (activity.page_titles) {
+                    const firstTitle = activity.page_titles.split(',')[0].trim();
+                    const truncatedTitle = truncate(firstTitle, 60);
+                    pageTitleHtml = `<div class="activity-title" title="${escapeHtml(firstTitle)}">${escapeHtml(truncatedTitle)}</div>`;
+                }
+
+                html += `
+                    <div class="activity-entry" style="animation-delay: ${animationDelay}s">
+                        <div class="activity-main">
+                            <div class="activity-domain">
+                                ${displayName}
+                                ${projectBadge}
+                            </div>
+                            ${pageTitleHtml}
+                            <div class="activity-browser">${browserName}</div>
+                        </div>
+                        <div class="activity-stats">
+                            <div class="activity-time">${activity.time}</div>
+                            <div class="activity-sessions">${activity.session_count} session${activity.session_count !== 1 ? 's' : ''}</div>
+                        </div>
+                        <div class="activity-bar">
+                            <div class="activity-bar-fill" style="width: ${activity.percentage}%"></div>
+                            <div class="activity-percentage">${activity.percentage}%</div>
+                        </div>
+                    </div>
+                `;
+            });
+
+            html += '</div>';
+            event.detail.target.innerHTML = html;
+        }
+
+        // Truncate text to max length
+        function truncate(text, maxLength) {
+            if (!text) return '';
+            if (text.length <= maxLength) return text;
+            return text.substring(0, maxLength) + '...';
+        }
+
+        // Escape HTML to prevent XSS
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // ===================================
+        // Calendar Events Display
+        // ===================================
+
+        async function loadCalendarEvents() {
+            const container = document.getElementById('calendar-events');
+
+            try {
+                const response = await fetch('/api/calendar-events');
+                const data = await response.json();
+
+                if (data.events.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-ornament">◇</div>
+                            <p class="empty-message">No calendar events for today.</p>
+                            <p class="empty-hint">Add calendar subscriptions in <a href="/settings" style="color: var(--color-terracotta); text-decoration: underline;">Settings</a></p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                let html = '<div class="activities-list">';
+
+                data.events.forEach((event, index) => {
+                    const animationDelay = index * 0.05;
+                    const startTime = new Date(event.start_time).toLocaleTimeString('en-US', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: true
+                    });
+                    const endTime = new Date(event.end_time).toLocaleTimeString('en-US', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: true
+                    });
+
+                    // Project badge HTML
+                    let projectBadge = '';
+                    if (event.project_name && event.project_color) {
+                        projectBadge = `
+                            <span class="project-badge" style="background-color: ${event.project_color};">
+                                ${escapeHtml(event.project_name)}
+                            </span>
+                        `;
+                    }
+
+                    // Event details
+                    let detailsHtml = '';
+                    const details = [];
+                    if (event.location) details.push(`📍 ${event.location}`);
+                    if (event.attendees_count > 0) details.push(`👥 ${event.attendees_count} attendee${event.attendees_count !== 1 ? 's' : ''}`);
+                    if (details.length > 0) {
+                        detailsHtml = `<div class="activity-title">${escapeHtml(details.join(' • '))}</div>`;
+                    }
+
+                    html += `
+                        <div class="activity-entry" style="animation-delay: ${animationDelay}s; background: linear-gradient(to right, var(--color-cream) 0%, var(--color-cream) 4px, var(--color-parchment) 4px, var(--color-parchment) 100%);">
+                            <div class="activity-main">
+                                <div class="activity-domain">
+                                    📅 ${escapeHtml(event.title)}
+                                    ${projectBadge}
+                                </div>
+                                ${detailsHtml}
+                                <div class="activity-browser">${startTime} - ${endTime}</div>
+                            </div>
+                            <div class="activity-stats">
+                                <div class="activity-time">${event.duration}</div>
+                                <div class="activity-sessions">${event.is_all_day ? 'All day' : 'Event'}</div>
+                            </div>
+                        </div>
+                    `;
+                });
+
+                html += '</div>';
+                container.innerHTML = html;
+            } catch (error) {
+                console.error('Error loading calendar events:', error);
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-ornament">◇</div>
+                        <p class="empty-message">Failed to load calendar events.</p>
+                    </div>
+                `;
+            }
+        }
+
+{% endblock %}

@@ -3,27 +3,17 @@
  */
 
 const express = require('express');
-const path = require('path');
-const fs = require('fs');
 
 const router = express.Router();
-
-/**
- * Read HTML template
- */
-function readTemplate(templateName) {
-  const templatePath = path.join(__dirname, '..', 'views', templateName);
-  return fs.readFileSync(templatePath, 'utf8');
-}
 
 /**
  * Dashboard page
  */
 router.get('/', (req, res) => {
   try {
-    const html = readTemplate('dashboard.html');
-    res.send(html);
+    res.render('dashboard', { activePage: 'dashboard' });
   } catch (error) {
+    console.error('Error rendering dashboard:', error);
     res.status(500).send('<h1>Error loading dashboard</h1>');
   }
 });
@@ -33,9 +23,9 @@ router.get('/', (req, res) => {
  */
 router.get('/reports', (req, res) => {
   try {
-    const html = readTemplate('reports.html');
-    res.send(html);
+    res.render('reports', { activePage: 'reports' });
   } catch (error) {
+    console.error('Error rendering reports:', error);
     res.status(500).send('<h1>Error loading reports</h1>');
   }
 });
@@ -45,9 +35,9 @@ router.get('/reports', (req, res) => {
  */
 router.get('/projects', (req, res) => {
   try {
-    const html = readTemplate('projects.html');
-    res.send(html);
+    res.render('projects', { activePage: 'projects' });
   } catch (error) {
+    console.error('Error rendering projects:', error);
     res.status(500).send('<h1>Error loading projects</h1>');
   }
 });
@@ -57,9 +47,9 @@ router.get('/projects', (req, res) => {
  */
 router.get('/settings', (req, res) => {
   try {
-    const html = readTemplate('settings.html');
-    res.send(html);
+    res.render('settings', { activePage: 'settings' });
   } catch (error) {
+    console.error('Error rendering settings:', error);
     res.status(500).send('<h1>Error loading settings</h1>');
   }
 });

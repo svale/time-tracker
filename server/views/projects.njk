@@ -1,0 +1,429 @@
+{% extends "layouts/main.njk" %}
+
+{% block title %}Time Tracker - Projects{% endblock %}
+
+{% block content %}
+                    <a href="/projects" class="nav-link active">Projects</a>
+                    <a href="/settings" class="nav-link">Settings</a>
+                </nav>
+            </div>
+            <div class="privacy-badge">
+                <svg class="lock-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
+                <span>Local & Private</span>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <!-- Decorative separator -->
+            <div class="section-separator">
+                <span class="separator-ornament">◆</span>
+            </div>
+
+            <!-- Projects section -->
+            <section class="projects-section">
+                <div class="section-header">
+                    <h2 class="section-title">Project Chronicles</h2>
+                    <p class="section-description">Organize your time by projects with automatic domain-based categorization</p>
+                </div>
+
+                <div id="projects-container" class="projects-grid">
+                    <div class="loading-state">
+                        <div class="loading-spinner"></div>
+                        <p>Loading projects...</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="site-footer">
+            <div class="footer-ornament">❖</div>
+            <p class="footer-text">
+                No permissions required • All data remains on your machine • Browser history read only
+            </p>
+            <p class="footer-meta">Time Tracker v1.0</p>
+        </footer>
+    </div>
+
+    <!-- New/Edit Project Modal -->
+    <div id="project-modal" class="modal-overlay">
+        <div class="modal">
+            <h3 class="modal-title" id="modal-title">New Project</h3>
+            <form id="project-form">
+                <input type="hidden" id="project-id" value="">
+
+                <div class="form-group">
+                    <label class="form-label" for="project-name">Project Name</label>
+                    <input type="text" id="project-name" class="form-input" required placeholder="e.g., Work, Personal, Learning">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="project-description">Description (optional)</label>
+                    <input type="text" id="project-description" class="form-input" placeholder="Brief description of this project">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="project-color">Color</label>
+                    <input type="color" id="project-color" class="form-input color-input" value="#3B82F6">
+                </div>
+
+                <div class="form-actions">
+                    <button type="button" class="btn" onclick="closeProjectModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Project</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Manage Domains Modal -->
+    <div id="domains-modal" class="modal-overlay">
+        <div class="modal">
+            <h3 class="modal-title">Manage Domains</h3>
+            <p class="section-description" style="margin-bottom: 1.5rem;">
+                <strong id="domains-project-name"></strong>
+            </p>
+
+            <div class="domains-section">
+                <h4 style="margin: 0 0 1rem 0; font-size: 1rem;">Domain Mappings</h4>
+                <ul id="domains-list" class="domain-list">
+                    <li class="loading-state">Loading domains...</li>
+                </ul>
+
+                <div class="domain-add-form">
+                    <input type="text" id="new-domain" class="form-input" placeholder="e.g., github.com" style="flex: 1;">
+                    <button type="button" class="btn btn-primary" onclick="addDomain()">Add Domain</button>
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <button type="button" class="btn" onclick="closeDomainsModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let projects = [];
+        let currentProjectId = null;
+
+        // Load projects on page load
+        async function loadProjects() {
+            try {
+                const response = await fetch('/api/projects');
+                projects = await response.json();
+                renderProjects();
+            } catch (error) {
+                console.error('Error loading projects:', error);
+                document.getElementById('projects-container').innerHTML = `
+                    <div class="empty-state">
+                        <p>Error loading projects. Please refresh the page.</p>
+                    </div>
+                `;
+            }
+        }
+
+        // Render projects grid
+        function renderProjects() {
+            const container = document.getElementById('projects-container');
+
+            if (projects.length === 0) {
+                container.innerHTML = `
+                    <div class="project-card new-project-card" onclick="openNewProjectModal()">
+                        <div class="new-project-icon">⊕</div>
+{% endblock %}
+
+{% block scripts %}
+                    </div>
+                `;
+                return;
+            }
+
+            let html = '';
+
+            // Add new project card
+            html += `
+                <div class="project-card new-project-card" onclick="openNewProjectModal()">
+                    <div class="new-project-icon">⊕</div>
+                    <div class="new-project-text">New Project</div>
+                </div>
+            `;
+
+            // Add existing projects
+            projects.forEach((project, index) => {
+                const animationDelay = (index + 1) * 0.1;
+                html += `
+                    <div class="project-card" style="animation-delay: ${animationDelay}s">
+                        <div class="project-header">
+                            <div class="project-color-indicator" style="background-color: ${project.color}"></div>
+                            <div class="project-info">
+                                <h3 class="project-name">${escapeHtml(project.name)}</h3>
+                                ${project.description ? `<p class="project-description">${escapeHtml(project.description)}</p>` : ''}
+                            </div>
+                        </div>
+
+                        <div class="project-stats">
+                            <div class="project-stat">
+                                <span>⟡</span>
+                                <span id="domain-count-${project.id}">Loading...</span>
+                            </div>
+                        </div>
+
+                        <div class="project-actions">
+                            <button class="btn" onclick="openDomainsModal(${project.id})">Manage Domains</button>
+                            <button class="btn" onclick="openEditProjectModal(${project.id})">Edit</button>
+                            <button class="btn btn-danger" onclick="archiveProject(${project.id})">Archive</button>
+                        </div>
+                    </div>
+                `;
+            });
+
+            container.innerHTML = html;
+
+            // Load domain counts for each project
+            projects.forEach(project => {
+                loadDomainCount(project.id);
+            });
+        }
+
+        // Load domain count for a project
+        async function loadDomainCount(projectId) {
+            try {
+                const response = await fetch(`/api/projects/${projectId}/domains`);
+                const domains = await response.json();
+                const countEl = document.getElementById(`domain-count-${projectId}`);
+                if (countEl) {
+                    countEl.textContent = `${domains.length} domain${domains.length !== 1 ? 's' : ''}`;
+                }
+            } catch (error) {
+                console.error(`Error loading domain count for project ${projectId}:`, error);
+            }
+        }
+
+        // Open new project modal
+        function openNewProjectModal() {
+            document.getElementById('modal-title').textContent = 'New Project';
+            document.getElementById('project-id').value = '';
+            document.getElementById('project-name').value = '';
+            document.getElementById('project-description').value = '';
+            document.getElementById('project-color').value = '#3B82F6';
+            document.getElementById('project-modal').classList.add('active');
+        }
+
+        // Open edit project modal
+        function openEditProjectModal(projectId) {
+            const project = projects.find(p => p.id === projectId);
+            if (!project) return;
+
+            document.getElementById('modal-title').textContent = 'Edit Project';
+            document.getElementById('project-id').value = project.id;
+            document.getElementById('project-name').value = project.name;
+            document.getElementById('project-description').value = project.description || '';
+            document.getElementById('project-color').value = project.color;
+            document.getElementById('project-modal').classList.add('active');
+        }
+
+        // Close project modal
+        function closeProjectModal() {
+            document.getElementById('project-modal').classList.remove('active');
+        }
+
+        // Handle project form submission
+        document.getElementById('project-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const projectId = document.getElementById('project-id').value;
+            const name = document.getElementById('project-name').value.trim();
+            const description = document.getElementById('project-description').value.trim();
+            const color = document.getElementById('project-color').value;
+
+            const data = { name, description: description || null, color };
+
+            try {
+                let response;
+                if (projectId) {
+                    // Update existing project
+                    response = await fetch(`/api/projects/${projectId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(data)
+                    });
+                } else {
+                    // Create new project
+                    response = await fetch('/api/projects', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(data)
+                    });
+                }
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    alert(error.error || 'Failed to save project');
+                    return;
+                }
+
+                closeProjectModal();
+                await loadProjects();
+            } catch (error) {
+                console.error('Error saving project:', error);
+                alert('Failed to save project');
+            }
+        });
+
+        // Archive project
+        async function archiveProject(projectId) {
+            const project = projects.find(p => p.id === projectId);
+            if (!project) return;
+
+            if (!confirm(`Are you sure you want to archive "${project.name}"? This will hide it from the list but preserve all associated data.`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/projects/${projectId}`, {
+                    method: 'DELETE'
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    alert(error.error || 'Failed to archive project');
+                    return;
+                }
+
+                await loadProjects();
+            } catch (error) {
+                console.error('Error archiving project:', error);
+                alert('Failed to archive project');
+            }
+        }
+
+        // Open domains modal
+        async function openDomainsModal(projectId) {
+            currentProjectId = projectId;
+            const project = projects.find(p => p.id === projectId);
+            if (!project) return;
+
+            document.getElementById('domains-project-name').textContent = project.name;
+            document.getElementById('domains-modal').classList.add('active');
+            await loadDomains();
+        }
+
+        // Close domains modal
+        function closeDomainsModal() {
+            document.getElementById('domains-modal').classList.remove('active');
+            currentProjectId = null;
+        }
+
+        // Load domains for current project
+        async function loadDomains() {
+            if (!currentProjectId) return;
+
+            const listEl = document.getElementById('domains-list');
+            listEl.innerHTML = '<li class="loading-state">Loading domains...</li>';
+
+            try {
+                const response = await fetch(`/api/projects/${currentProjectId}/domains`);
+                const domains = await response.json();
+
+                if (domains.length === 0) {
+                    listEl.innerHTML = `
+                        <li class="empty-state">
+                            <p style="margin: 1rem 0;">No domains mapped yet.</p>
+                            <p style="font-size: 0.875rem; color: var(--text-secondary);">Add domains to automatically categorize browser sessions.</p>
+                        </li>
+                    `;
+                    return;
+                }
+
+                listEl.innerHTML = domains.map(d => `
+                    <li class="domain-item">
+                        <span class="domain-name">${escapeHtml(d.domain)}</span>
+                        <button class="btn btn-danger" onclick="removeDomain(${d.id})">Remove</button>
+                    </li>
+                `).join('');
+            } catch (error) {
+                console.error('Error loading domains:', error);
+                listEl.innerHTML = '<li class="empty-state">Error loading domains</li>';
+            }
+        }
+
+        // Add domain to current project
+        async function addDomain() {
+            if (!currentProjectId) return;
+
+            const domainInput = document.getElementById('new-domain');
+            const domain = domainInput.value.trim().toLowerCase();
+
+            if (!domain) {
+                alert('Please enter a domain');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/projects/${currentProjectId}/domains`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ domain })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    alert(error.error || 'Failed to add domain');
+                    return;
+                }
+
+                domainInput.value = '';
+                await loadDomains();
+                loadDomainCount(currentProjectId);
+            } catch (error) {
+                console.error('Error adding domain:', error);
+                alert('Failed to add domain');
+            }
+        }
+
+        // Remove domain mapping
+        async function removeDomain(domainId) {
+            if (!confirm('Remove this domain mapping?')) return;
+
+            try {
+                const response = await fetch(`/api/project-domains/${domainId}`, {
+                    method: 'DELETE'
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    alert(error.error || 'Failed to remove domain');
+                    return;
+                }
+
+                await loadDomains();
+                loadDomainCount(currentProjectId);
+            } catch (error) {
+                console.error('Error removing domain:', error);
+                alert('Failed to remove domain');
+            }
+        }
+
+        // Escape HTML to prevent XSS
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Close modals on escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeProjectModal();
+                closeDomainsModal();
+            }
+        });
+
+        // Close modals when clicking overlay
+        document.getElementById('project-modal').addEventListener('click', (e) => {
+            if (e.target.id === 'project-modal') closeProjectModal();
+        });
+        document.getElementById('domains-modal').addEventListener('click', (e) => {
+{% endblock %}
