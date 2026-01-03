@@ -50,7 +50,8 @@ async function processHistory() {
           app_name: session.browser,
           app_bundle_id: session.browser === 'Chrome' ? 'com.google.Chrome' : 'com.apple.Safari',
           domain: session.domain,
-          project_id: projectId // Auto-assign project if domain matches
+          project_id: projectId, // Auto-assign project if domain matches
+          page_title: session.page_title || null // Page title from browser history
         });
         savedCount++;
 

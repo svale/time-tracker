@@ -145,15 +145,15 @@ function insertEvent({ timestamp, app_name, app_bundle_id, window_title, is_idle
 /**
  * Insert an activity session
  */
-function insertSession({ start_time, end_time, duration_seconds, app_name, app_bundle_id, domain = null, project_id = null }) {
+function insertSession({ start_time, end_time, duration_seconds, app_name, app_bundle_id, domain = null, project_id = null, page_title = null }) {
   if (!db) throw new Error('Database not initialized');
 
   const stmt = db.prepare(`
-    INSERT INTO activity_sessions (start_time, end_time, duration_seconds, app_name, app_bundle_id, domain, project_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO activity_sessions (start_time, end_time, duration_seconds, app_name, app_bundle_id, domain, project_id, page_title)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
-  stmt.run([start_time, end_time, duration_seconds, app_name, app_bundle_id, domain, project_id]);
+  stmt.run([start_time, end_time, duration_seconds, app_name, app_bundle_id, domain, project_id, page_title]);
   stmt.free();
 
   saveDatabase();
@@ -209,7 +209,8 @@ function getDailyReportAll(dateString, projectId = null) {
       p.name as project_name,
       p.color as project_color,
       SUM(s.duration_seconds) as total_seconds,
-      COUNT(*) as session_count
+      COUNT(*) as session_count,
+      GROUP_CONCAT(DISTINCT s.page_title) as page_titles
     FROM activity_sessions s
     LEFT JOIN projects p ON s.project_id = p.id
     WHERE s.start_time >= ? AND s.start_time <= ?

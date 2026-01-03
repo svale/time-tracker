@@ -233,6 +233,27 @@ async function getAllBrowserHistory(sinceTimestamp = null) {
 }
 
 /**
+ * Get most frequent title from titleCounts map
+ */
+function getMostFrequentTitle(titleCounts) {
+  if (!titleCounts || Object.keys(titleCounts).length === 0) {
+    return null;
+  }
+
+  let maxCount = 0;
+  let mostFrequentTitle = null;
+
+  for (const [title, count] of Object.entries(titleCounts)) {
+    if (count > maxCount) {
+      maxCount = count;
+      mostFrequentTitle = title;
+    }
+  }
+
+  return mostFrequentTitle;
+}
+
+/**
  * Aggregate history into time sessions
  * Groups consecutive visits to same domain within threshold
  */
@@ -258,8 +279,13 @@ function aggregateIntoSessions(history, sessionGapMinutes = 5) {
         start_time: visit.timestamp,
         end_time: visit.timestamp,
         visit_count: 1,
-        urls: [visit.url]
+        urls: [visit.url],
+        titleCounts: {}
       };
+      // Track title occurrences
+      if (visit.title) {
+        currentSession.titleCounts[visit.title] = 1;
+      }
     } else {
       const timeSinceLastVisit = visit.timestamp - currentSession.end_time;
       const sameDomain = domain === currentSession.domain;
@@ -271,6 +297,10 @@ function aggregateIntoSessions(history, sessionGapMinutes = 5) {
         if (!currentSession.urls.includes(visit.url)) {
           currentSession.urls.push(visit.url);
         }
+        // Track title occurrences
+        if (visit.title) {
+          currentSession.titleCounts[visit.title] = (currentSession.titleCounts[visit.title] || 0) + 1;
+        }
       } else {
         // Save current session and start new one
         sessions.push(currentSession);
@@ -280,8 +310,13 @@ function aggregateIntoSessions(history, sessionGapMinutes = 5) {
           start_time: visit.timestamp,
           end_time: visit.timestamp,
           visit_count: 1,
-          urls: [visit.url]
+          urls: [visit.url],
+          titleCounts: {}
         };
+        // Track title occurrences
+        if (visit.title) {
+          currentSession.titleCounts[visit.title] = 1;
+        }
       }
     }
   }
@@ -291,13 +326,17 @@ function aggregateIntoSessions(history, sessionGapMinutes = 5) {
     sessions.push(currentSession);
   }
 
-  // Calculate durations
+  // Calculate durations and determine most frequent title
   sessions.forEach(session => {
     session.duration_seconds = Math.floor((session.end_time - session.start_time) / 1000);
     // Minimum 1 second per visit if no duration calculated
     if (session.duration_seconds === 0) {
       session.duration_seconds = session.visit_count * 1;
     }
+    // Set the most frequent title as the session's page_title
+    session.page_title = getMostFrequentTitle(session.titleCounts);
+    // Clean up titleCounts (we don't need to store this)
+    delete session.titleCounts;
   });
 
   return sessions;

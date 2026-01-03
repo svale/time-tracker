@@ -442,6 +442,18 @@ body {
   flex: 1;
 }
 
+.activity-title {
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  font-style: italic;
+  color: var(--color-warm-gray);
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .activity-browser {
   font-size: 0.75rem;
   font-weight: 500;

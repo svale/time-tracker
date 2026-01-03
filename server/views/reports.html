@@ -417,6 +417,14 @@
                         `;
                     }
 
+                    // Page title HTML (take first title if multiple, truncate if too long)
+                    let pageTitleHtml = '';
+                    if (activity.page_titles) {
+                        const firstTitle = activity.page_titles.split(',')[0].trim();
+                        const truncatedTitle = truncate(firstTitle, 60);
+                        pageTitleHtml = `<div class="activity-title" title="${escapeHtml(firstTitle)}">${escapeHtml(truncatedTitle)}</div>`;
+                    }
+
                     html += `
                         <div class="activity-entry" style="animation-delay: ${animationDelay}s">
                             <div class="activity-main">
@@ -424,6 +432,7 @@
                                     ${displayName}
                                     ${projectBadge}
                                 </div>
+                                ${pageTitleHtml}
                                 <div class="activity-browser">${browserName}</div>
                             </div>
                             <div class="activity-stats">
@@ -534,6 +543,13 @@
                     }
                 }
             });
+        }
+
+        // Truncate text to max length
+        function truncate(text, maxLength) {
+            if (!text) return '';
+            if (text.length <= maxLength) return text;
+            return text.substring(0, maxLength) + '...';
         }
 
         // Escape HTML to prevent XSS

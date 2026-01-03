@@ -80,6 +80,7 @@ router.get('/daily-summary', (req, res) => {
         project_id: row.project_id || null,
         project_name: row.project_name || null,
         project_color: row.project_color || null,
+        page_titles: row.page_titles || null,
         time: formatDuration(row.total_seconds || 0),
         seconds: row.total_seconds || 0,
         percentage: totalSeconds > 0 ? Math.round((row.total_seconds / totalSeconds) * 100) : 0
@@ -113,6 +114,7 @@ router.get('/daily-report', (req, res) => {
       project_id: row.project_id || null,
       project_name: row.project_name || null,
       project_color: row.project_color || null,
+      page_titles: row.page_titles || null,
       time: formatDuration(row.total_seconds || 0),
       seconds: row.total_seconds || 0,
       session_count: row.session_count || 0,
