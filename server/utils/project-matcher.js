@@ -23,15 +23,39 @@ function matchDomain(domain) {
 
 /**
  * Match a calendar event to a project based on keywords
- * NOTE: Calendar keywords table doesn't exist yet (Phase 2)
- * This is a placeholder for future implementation
  * @param {string} title - Event title
  * @param {string} description - Event description (optional)
  * @returns {number|null} - Project ID if match found, null otherwise
  */
 function matchCalendarEvent(title, description = '') {
-  // TODO: Implement in Phase 2 when project_calendar_keywords table exists
-  return null;
+  if (!title) return null;
+
+  try {
+    // Get all projects
+    const projects = db.getProjects();
+
+    // Combine title and description for matching
+    const searchText = `${title} ${description || ''}`.toLowerCase();
+
+    // Check each project's keywords
+    for (const project of projects) {
+      const keywords = db.getProjectKeywords(project.id);
+
+      for (const keywordRow of keywords) {
+        const keyword = keywordRow.keyword.toLowerCase();
+
+        // Check if the keyword appears in title or description
+        if (searchText.includes(keyword)) {
+          return project.id;
+        }
+      }
+    }
+
+    return null;
+  } catch (error) {
+    console.error('Error matching calendar event to project:', error.message);
+    return null;
+  }
 }
 
 /**

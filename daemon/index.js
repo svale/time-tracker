@@ -8,6 +8,7 @@
 
 const db = require('../database/db');
 const tracker = require('./tracker');
+const icalSync = require('./ical-sync');
 
 /**
  * Start the daemon
@@ -34,8 +35,34 @@ async function startDaemon() {
   console.log('Starting browser history tracker...');
   tracker.startTracking();
 
+  // Start calendar sync (every 15 minutes)
+  console.log('Starting iCal calendar sync...');
+  const CALENDAR_SYNC_INTERVAL = 15 * 60 * 1000; // 15 minutes
+
+  // Initial sync after 5 seconds (to allow DB to be ready)
+  setTimeout(async () => {
+    try {
+      await icalSync.syncAllCalendars();
+    } catch (error) {
+      console.error('[Calendar] Initial sync error:', error.message);
+    }
+  }, 5000);
+
+  // Set up periodic sync
+  const calendarSyncInterval = setInterval(async () => {
+    try {
+      await icalSync.syncAllCalendars();
+    } catch (error) {
+      console.error('[Calendar] Sync error:', error.message);
+    }
+  }, CALENDAR_SYNC_INTERVAL);
+
+  // Store interval for cleanup
+  global.calendarSyncInterval = calendarSyncInterval;
+
   console.log('\n✓ Daemon is running!');
   console.log('  - Tracking: Chrome & Safari browser history');
+  console.log('  - Calendar: iCal feed sync every 15 minutes');
   console.log('  - Check interval: Every 5 minutes');
   console.log('  - Database: data/activity.db');
   console.log('  - Web UI: http://localhost:8765 (run `npm run server` to start)\n');
@@ -52,6 +79,11 @@ function shutdown() {
 
   // Stop tracking
   tracker.stopTracking();
+
+  // Stop calendar sync
+  if (global.calendarSyncInterval) {
+    clearInterval(global.calendarSyncInterval);
+  }
 
   // Close database
   db.closeDatabase();

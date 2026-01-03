@@ -102,6 +102,20 @@
                     </div>
                 </div>
             </section>
+
+            <!-- Calendar Events -->
+            <section class="activities-section" style="margin-top: 48px;">
+                <div class="section-header">
+                    <h2 class="section-title">Calendar Events</h2>
+                    <p class="section-description">Scheduled meetings and events from your calendar feeds</p>
+                </div>
+                <div class="activities-container" id="calendar-events">
+                    <div class="loading-state">
+                        <div class="loading-spinner"></div>
+                        <p>Loading calendar events...</p>
+                    </div>
+                </div>
+            </section>
         </main>
 
         <!-- Footer -->
@@ -314,6 +328,97 @@
             div.textContent = text;
             return div.innerHTML;
         }
+
+        // ===================================
+        // Calendar Events Display
+        // ===================================
+
+        async function loadCalendarEvents() {
+            const container = document.getElementById('calendar-events');
+
+            try {
+                const response = await fetch('/api/calendar-events');
+                const data = await response.json();
+
+                if (data.events.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-ornament">◇</div>
+                            <p class="empty-message">No calendar events for today.</p>
+                            <p class="empty-hint">Add calendar subscriptions in <a href="/settings" style="color: var(--color-terracotta); text-decoration: underline;">Settings</a></p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                let html = '<div class="activities-list">';
+
+                data.events.forEach((event, index) => {
+                    const animationDelay = index * 0.05;
+                    const startTime = new Date(event.start_time).toLocaleTimeString('en-US', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: true
+                    });
+                    const endTime = new Date(event.end_time).toLocaleTimeString('en-US', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: true
+                    });
+
+                    // Project badge HTML
+                    let projectBadge = '';
+                    if (event.project_name && event.project_color) {
+                        projectBadge = `
+                            <span class="project-badge" style="background-color: ${event.project_color}; color: white; padding: 0.25rem 0.5rem; border-radius: 2px; font-size: 0.75rem; margin-left: 0.5rem; font-weight: 500;">
+                                ${escapeHtml(event.project_name)}
+                            </span>
+                        `;
+                    }
+
+                    // Event details
+                    let detailsHtml = '';
+                    const details = [];
+                    if (event.location) details.push(`📍 ${event.location}`);
+                    if (event.attendees_count > 0) details.push(`👥 ${event.attendees_count} attendee${event.attendees_count !== 1 ? 's' : ''}`);
+                    if (details.length > 0) {
+                        detailsHtml = `<div class="activity-title" style="color: var(--color-warm-gray); font-size: 0.85rem;">${escapeHtml(details.join(' • '))}</div>`;
+                    }
+
+                    html += `
+                        <div class="activity-entry" style="animation-delay: ${animationDelay}s; background: linear-gradient(to right, var(--color-cream) 0%, var(--color-cream) 4px, var(--color-parchment) 4px, var(--color-parchment) 100%);">
+                            <div class="activity-main">
+                                <div class="activity-domain">
+                                    📅 ${escapeHtml(event.title)}
+                                    ${projectBadge}
+                                </div>
+                                ${detailsHtml}
+                                <div class="activity-browser" style="color: var(--color-warm-gray);">${startTime} - ${endTime}</div>
+                            </div>
+                            <div class="activity-stats">
+                                <div class="activity-time">${event.duration}</div>
+                                <div class="activity-sessions">${event.is_all_day ? 'All day' : 'Event'}</div>
+                            </div>
+                        </div>
+                    `;
+                });
+
+                html += '</div>';
+                container.innerHTML = html;
+            } catch (error) {
+                console.error('Error loading calendar events:', error);
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-ornament">◇</div>
+                        <p class="empty-message">Failed to load calendar events.</p>
+                    </div>
+                `;
+            }
+        }
+
+        // Load calendar events on page load and refresh every minute
+        loadCalendarEvents();
+        setInterval(loadCalendarEvents, 60000);
     </script>
 </body>
 </html>

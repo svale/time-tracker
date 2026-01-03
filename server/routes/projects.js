@@ -198,4 +198,56 @@ router.post('/sessions/:id/assign-project', (req, res) => {
   }
 });
 
+/**
+ * GET /api/projects/:id/keywords
+ * Get calendar keywords for a project
+ */
+router.get('/projects/:id/keywords', (req, res) => {
+  try {
+    const { id } = req.params;
+    const keywords = db.getProjectKeywords(parseInt(id, 10));
+    res.json(keywords);
+  } catch (error) {
+    console.error('Error in GET /api/projects/:id/keywords:', error);
+    res.status(500).json({ error: 'Failed to get keywords' });
+  }
+});
+
+/**
+ * POST /api/projects/:id/keywords
+ * Add a calendar keyword to a project
+ */
+router.post('/projects/:id/keywords', (req, res) => {
+  try {
+    const { id } = req.params;
+    const { keyword } = req.body;
+
+    if (!keyword || keyword.trim() === '') {
+      return res.status(400).json({ error: 'Keyword is required' });
+    }
+
+    db.addProjectKeyword(parseInt(id, 10), keyword.trim());
+    const keywords = db.getProjectKeywords(parseInt(id, 10));
+    res.status(201).json(keywords);
+  } catch (error) {
+    console.error('Error in POST /api/projects/:id/keywords:', error);
+    res.status(500).json({ error: 'Failed to add keyword' });
+  }
+});
+
+/**
+ * DELETE /api/project-keywords/:id
+ * Remove a calendar keyword
+ */
+router.delete('/project-keywords/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    db.removeProjectKeyword(parseInt(id, 10));
+    res.json({ success: true, message: 'Keyword removed' });
+  } catch (error) {
+    console.error('Error in DELETE /api/project-keywords/:id:', error);
+    res.status(500).json({ error: 'Failed to remove keyword' });
+  }
+});
+
 module.exports = router;

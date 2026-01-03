@@ -1,6 +1,7 @@
 const initSqlJs = require('sql.js');
 const fs = require('fs');
 const path = require('path');
+const encryption = require('../server/utils/encryption');
 
 const DB_PATH = path.join(__dirname, '..', 'data', 'activity.db');
 const SCHEMA_PATH = path.join(__dirname, 'schema.sql');
@@ -564,6 +565,329 @@ function closeDatabase() {
   }
 }
 
+// ==========================================
+// Calendar Integration Functions
+// ==========================================
+
+// Helper to create db wrapper for encryption (avoids context loss)
+function getDbWrapper() {
+  return {
+    getSetting: (key, defaultValue) => getSetting(key, defaultValue),
+    setSetting: (key, value) => setSetting(key, value),
+    saveDatabase: () => saveDatabase()
+  };
+}
+
+/**
+ * Get all active calendar subscriptions
+ */
+function getCalendarSubscriptions() {
+  if (!db) throw new Error('Database not initialized');
+
+  const results = [];
+  const stmt = db.prepare('SELECT * FROM calendar_subscriptions ORDER BY name');
+
+  while (stmt.step()) {
+    const row = stmt.getAsObject();
+    try {
+      // Decrypt URL
+      results.push({
+        id: row.id,
+        name: row.name,
+        ical_url: encryption.decrypt(row.ical_url, getDbWrapper()),
+        provider: row.provider,
+        is_active: row.is_active === 1,
+        last_sync: row.last_sync,
+        last_error: row.last_error,
+        created_at: row.created_at,
+        updated_at: row.updated_at
+      });
+    } catch (error) {
+      console.error(`Failed to decrypt calendar subscription ${row.id}:`, error.message);
+    }
+  }
+  stmt.free();
+
+  return results;
+}
+
+/**
+ * Get a single calendar subscription by ID
+ */
+function getCalendarSubscription(id) {
+  if (!db) throw new Error('Database not initialized');
+
+  const stmt = db.prepare('SELECT * FROM calendar_subscriptions WHERE id = ?');
+  stmt.bind([id]);
+
+  let result = null;
+  if (stmt.step()) {
+    const row = stmt.getAsObject();
+    try {
+      result = {
+        id: row.id,
+        name: row.name,
+        ical_url: encryption.decrypt(row.ical_url, getDbWrapper()),
+        provider: row.provider,
+        is_active: row.is_active === 1,
+        last_sync: row.last_sync,
+        last_error: row.last_error,
+        created_at: row.created_at,
+        updated_at: row.updated_at
+      };
+    } catch (error) {
+      console.error(`Failed to decrypt calendar subscription ${row.id}:`, error.message);
+    }
+  }
+  stmt.free();
+
+  return result;
+}
+
+/**
+ * Add a new calendar subscription
+ */
+function addCalendarSubscription({ name, ical_url, provider = 'google' }) {
+  if (!db) throw new Error('Database not initialized');
+
+  try {
+    // Encrypt the iCal URL
+    const encryptedUrl = encryption.encrypt(ical_url, getDbWrapper());
+
+    const stmt = db.prepare(`
+      INSERT INTO calendar_subscriptions (name, ical_url, provider)
+      VALUES (?, ?, ?)
+    `);
+
+    stmt.run([name, encryptedUrl, provider]);
+    stmt.free();
+
+    // Get the inserted ID
+    const idStmt = db.prepare('SELECT last_insert_rowid() as id');
+    idStmt.step();
+    const id = idStmt.getAsObject().id;
+    idStmt.free();
+
+    saveDatabase();
+    return id;
+  } catch (error) {
+    console.error('Failed to add calendar subscription:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * Update calendar subscription
+ */
+function updateCalendarSubscription(id, { name, ical_url, provider, is_active }) {
+  if (!db) throw new Error('Database not initialized');
+
+  const updates = [];
+  const values = [];
+
+  if (name !== undefined) {
+    updates.push('name = ?');
+    values.push(name);
+  }
+  if (ical_url !== undefined) {
+    updates.push('ical_url = ?');
+    values.push(encryption.encrypt(ical_url, getDbWrapper()));
+  }
+  if (provider !== undefined) {
+    updates.push('provider = ?');
+    values.push(provider);
+  }
+  if (is_active !== undefined) {
+    updates.push('is_active = ?');
+    values.push(is_active ? 1 : 0);
+  }
+
+  if (updates.length === 0) return;
+
+  updates.push('updated_at = ?');
+  values.push(Date.now());
+  values.push(id);
+
+  const stmt = db.prepare(`
+    UPDATE calendar_subscriptions
+    SET ${updates.join(', ')}
+    WHERE id = ?
+  `);
+
+  stmt.run(values);
+  stmt.free();
+
+  saveDatabase();
+}
+
+/**
+ * Update calendar subscription sync status
+ */
+function updateCalendarSubscriptionSync(id, { last_sync, last_error = null }) {
+  if (!db) throw new Error('Database not initialized');
+
+  const stmt = db.prepare(`
+    UPDATE calendar_subscriptions
+    SET last_sync = ?, last_error = ?, updated_at = ?
+    WHERE id = ?
+  `);
+
+  stmt.run([last_sync, last_error, Date.now(), id]);
+  stmt.free();
+
+  saveDatabase();
+}
+
+/**
+ * Delete calendar subscription (and all its events via CASCADE)
+ */
+function deleteCalendarSubscription(id) {
+  if (!db) throw new Error('Database not initialized');
+
+  const stmt = db.prepare('DELETE FROM calendar_subscriptions WHERE id = ?');
+  stmt.run([id]);
+  stmt.free();
+
+  saveDatabase();
+}
+
+/**
+ * Insert calendar event (handles duplicates via UNIQUE constraint)
+ */
+function insertCalendarEvent(eventData) {
+  if (!db) throw new Error('Database not initialized');
+
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO calendar_events (
+      external_id, provider, calendar_id, title, description,
+      start_time, end_time, duration_seconds, project_id,
+      is_all_day, location, attendees_count, subscription_id, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  try {
+    stmt.run([
+      eventData.external_id,
+      eventData.provider || 'ical',
+      eventData.calendar_id || null,
+      eventData.title,
+      eventData.description || null,
+      eventData.start_time,
+      eventData.end_time,
+      eventData.duration_seconds,
+      eventData.project_id || null,
+      eventData.is_all_day ? 1 : 0,
+      eventData.location || null,
+      eventData.attendees_count || 0,
+      eventData.subscription_id || null,
+      Date.now()
+    ]);
+    stmt.free();
+    saveDatabase();
+    return true;
+  } catch (error) {
+    stmt.free();
+    console.error('Failed to insert calendar event:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * Get calendar events for a specific date
+ */
+function getCalendarEvents(dateString) {
+  if (!db) throw new Error('Database not initialized');
+
+  const startOfDay = new Date(dateString).setHours(0, 0, 0, 0);
+  const endOfDay = new Date(dateString).setHours(23, 59, 59, 999);
+
+  const results = [];
+  const stmt = db.prepare(`
+    SELECT
+      ce.*,
+      p.name as project_name,
+      p.color as project_color
+    FROM calendar_events ce
+    LEFT JOIN projects p ON ce.project_id = p.id
+    WHERE ce.start_time >= ? AND ce.start_time <= ?
+    ORDER BY ce.start_time
+  `);
+
+  stmt.bind([startOfDay, endOfDay]);
+  while (stmt.step()) {
+    results.push(stmt.getAsObject());
+  }
+  stmt.free();
+
+  return results;
+}
+
+/**
+ * Assign calendar event to project
+ */
+function assignCalendarEventToProject(eventId, projectId) {
+  if (!db) throw new Error('Database not initialized');
+
+  const stmt = db.prepare('UPDATE calendar_events SET project_id = ?, updated_at = ? WHERE id = ?');
+  stmt.run([projectId, Date.now(), eventId]);
+  stmt.free();
+
+  saveDatabase();
+}
+
+/**
+ * Get all keywords for a project
+ */
+function getProjectKeywords(projectId) {
+  if (!db) throw new Error('Database not initialized');
+
+  const results = [];
+  const stmt = db.prepare('SELECT * FROM project_calendar_keywords WHERE project_id = ? ORDER BY keyword');
+  stmt.bind([projectId]);
+
+  while (stmt.step()) {
+    results.push(stmt.getAsObject());
+  }
+  stmt.free();
+
+  return results;
+}
+
+/**
+ * Add keyword to project
+ */
+function addProjectKeyword(projectId, keyword) {
+  if (!db) throw new Error('Database not initialized');
+
+  const stmt = db.prepare(`
+    INSERT INTO project_calendar_keywords (project_id, keyword)
+    VALUES (?, ?)
+  `);
+
+  try {
+    stmt.run([projectId, keyword]);
+    stmt.free();
+    saveDatabase();
+    return true;
+  } catch (error) {
+    stmt.free();
+    throw error;
+  }
+}
+
+/**
+ * Remove keyword from project
+ */
+function removeProjectKeyword(id) {
+  if (!db) throw new Error('Database not initialized');
+
+  const stmt = db.prepare('DELETE FROM project_calendar_keywords WHERE id = ?');
+  stmt.run([id]);
+  stmt.free();
+
+  saveDatabase();
+}
+
 module.exports = {
   initDatabase,
   saveDatabase,
@@ -587,5 +911,18 @@ module.exports = {
   addProjectDomain,
   removeProjectDomain,
   assignSessionToProject,
-  findProjectByDomain
+  findProjectByDomain,
+  // Calendar integration functions
+  getCalendarSubscriptions,
+  getCalendarSubscription,
+  addCalendarSubscription,
+  updateCalendarSubscription,
+  updateCalendarSubscriptionSync,
+  deleteCalendarSubscription,
+  insertCalendarEvent,
+  getCalendarEvents,
+  assignCalendarEventToProject,
+  getProjectKeywords,
+  addProjectKeyword,
+  removeProjectKeyword
 };

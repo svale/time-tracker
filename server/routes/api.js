@@ -228,4 +228,70 @@ router.post('/settings', (req, res) => {
   }
 });
 
+/**
+ * GET /api/calendar-events
+ * Returns calendar events for a specific date
+ */
+router.get('/calendar-events', (req, res) => {
+  try {
+    const date = req.query.date || getTodayString();
+    const events = db.getCalendarEvents(date);
+
+    const formatted = events.map(event => ({
+      id: event.id,
+      external_id: event.external_id,
+      provider: event.provider,
+      title: event.title,
+      description: event.description,
+      start_time: event.start_time,
+      end_time: event.end_time,
+      duration_seconds: event.duration_seconds,
+      duration: formatDuration(event.duration_seconds || 0),
+      project_id: event.project_id || null,
+      project_name: event.project_name || null,
+      project_color: event.project_color || null,
+      is_all_day: event.is_all_day === 1,
+      location: event.location,
+      attendees_count: event.attendees_count || 0
+    }));
+
+    res.json({
+      date,
+      count: formatted.length,
+      events: formatted
+    });
+  } catch (error) {
+    console.error('Error in /api/calendar-events:', error);
+    res.status(500).json({ error: 'Failed to get calendar events' });
+  }
+});
+
+/**
+ * PUT /api/calendar-events/:id/project
+ * Manually assign a calendar event to a project
+ */
+router.put('/calendar-events/:id/project', (req, res) => {
+  try {
+    const eventId = parseInt(req.params.id, 10);
+    const { project_id } = req.body;
+
+    if (!eventId) {
+      return res.status(400).json({ error: 'Invalid event ID' });
+    }
+
+    // Allow null to unassign
+    const projectId = project_id === null ? null : parseInt(project_id, 10);
+
+    db.assignCalendarEventToProject(eventId, projectId);
+
+    res.json({
+      success: true,
+      message: projectId ? 'Event assigned to project' : 'Event unassigned from project'
+    });
+  } catch (error) {
+    console.error('Error in PUT /api/calendar-events/:id/project:', error);
+    res.status(500).json({ error: 'Failed to assign event to project' });
+  }
+});
+
 module.exports = router;

@@ -90,6 +90,76 @@
                     </form>
                 </div>
 
+                <!-- Calendar Subscriptions -->
+                <div class="activities-container" style="margin-bottom: 32px;">
+                    <h3 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; color: var(--color-charcoal); margin-bottom: 16px;">
+                        Calendar Subscriptions
+                    </h3>
+                    <p style="color: var(--color-warm-gray); margin-bottom: 24px; line-height: 1.6;">
+                        Track calendar events from Google, Outlook, Apple Calendar, or any iCal-compatible calendar.
+                    </p>
+
+                    <!-- Add Calendar Form -->
+                    <div id="add-calendar-form" style="background: var(--color-cream); padding: 24px; border-radius: var(--radius-md); border: 1px solid var(--color-border); margin-bottom: 24px;">
+                        <h4 style="font-family: var(--font-display); font-size: 1.1rem; font-weight: 600; color: var(--color-charcoal); margin-bottom: 16px;">
+                            Add Calendar
+                        </h4>
+                        <form id="calendar-form">
+                            <div class="form-group">
+                                <label for="calendar-name">Calendar Name</label>
+                                <input type="text"
+                                       id="calendar-name"
+                                       placeholder="e.g., Work Calendar, Personal"
+                                       required>
+                            </div>
+                            <div class="form-group">
+                                <label for="calendar-url">iCal Feed URL</label>
+                                <input type="url"
+                                       id="calendar-url"
+                                       placeholder="https://calendar.google.com/calendar/ical/..."
+                                       required>
+                                <details style="margin-top: 12px;">
+                                    <summary style="cursor: pointer; color: var(--color-terracotta); font-size: 0.9rem; user-select: none;">
+                                        How to get your iCal URL
+                                    </summary>
+                                    <div style="margin-top: 12px; padding-left: 16px; border-left: 3px solid var(--color-border); color: var(--color-warm-gray); font-size: 0.85rem; line-height: 1.6;">
+                                        <p style="margin-bottom: 8px;"><strong>Google Calendar:</strong></p>
+                                        <ol style="margin-left: 16px; margin-bottom: 12px;">
+                                            <li>Open Google Calendar</li>
+                                            <li>Click ⋮ next to your calendar → Settings</li>
+                                            <li>Scroll to "Integrate calendar"</li>
+                                            <li>Copy the "Secret address in iCal format"</li>
+                                        </ol>
+                                        <p style="margin-bottom: 8px;"><strong>Outlook/Microsoft 365:</strong></p>
+                                        <ol style="margin-left: 16px; margin-bottom: 12px;">
+                                            <li>Open Outlook Calendar</li>
+                                            <li>Settings → View all Outlook settings → Calendar → Shared calendars</li>
+                                            <li>Publish calendar → Copy ICS link</li>
+                                        </ol>
+                                        <p style="margin-bottom: 8px;"><strong>Apple Calendar (iCloud):</strong></p>
+                                        <ol style="margin-left: 16px;">
+                                            <li>Open iCloud.com → Calendar</li>
+                                            <li>Click share icon next to calendar</li>
+                                            <li>Enable "Public Calendar" → Copy link</li>
+                                        </ol>
+                                    </div>
+                                </details>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 16px;">
+                                <button type="submit">Add Calendar</button>
+                                <div id="calendar-message" style="color: var(--color-terracotta); font-weight: 600; font-size: 0.9rem;"></div>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- Calendar List -->
+                    <div id="calendar-list">
+                        <div style="text-align: center; padding: 40px; color: var(--color-warm-gray); font-style: italic;">
+                            Loading calendars...
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Database Info -->
                 <div class="activities-container" style="margin-bottom: 32px;">
                     <h3 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; color: var(--color-charcoal); margin-bottom: 24px;">
@@ -182,6 +252,204 @@
 
         // Load settings on page load
         loadSettings();
+
+        // ===================================
+        // Calendar Subscription Management
+        // ===================================
+
+        let calendars = [];
+
+        // Load calendar subscriptions
+        async function loadCalendars() {
+            try {
+                const response = await fetch('/api/integrations/calendars');
+                calendars = await response.json();
+                renderCalendars();
+            } catch (error) {
+                console.error('Error loading calendars:', error);
+                document.getElementById('calendar-list').innerHTML = `
+                    <div style="text-align: center; padding: 40px; color: var(--color-warm-gray); font-style: italic;">
+                        Failed to load calendars
+                    </div>
+                `;
+            }
+        }
+
+        // Render calendar list
+        function renderCalendars() {
+            const container = document.getElementById('calendar-list');
+
+            if (calendars.length === 0) {
+                container.innerHTML = `
+                    <div style="text-align: center; padding: 40px; color: var(--color-warm-gray); font-style: italic;">
+                        No calendars added yet. Add your first calendar above.
+                    </div>
+                `;
+                return;
+            }
+
+            const html = calendars.map(cal => {
+                const providerIcon = {
+                    'google': '🗓️',
+                    'outlook': '📅',
+                    'apple': '📆',
+                    'other': '📋'
+                }[cal.provider] || '📋';
+
+                const lastSyncText = cal.last_sync ?
+                    new Date(cal.last_sync).toLocaleString() : 'Never';
+
+                const statusColor = cal.is_active ? '#2E7D32' : 'var(--color-warm-gray)';
+                const statusText = cal.is_active ? 'Active' : 'Inactive';
+
+                // Button styling
+                const toggleBtnStyle = cal.is_active
+                    ? 'background: var(--color-warm-gray); color: white; border: 1px solid var(--color-warm-gray);'
+                    : 'background: #2E7D32; color: white; border: 1px solid #2E7D32;';
+                const toggleBtnText = cal.is_active ? 'Pause' : 'Activate';
+
+                return `
+                    <div style="background: var(--color-cream); padding: 20px; border-radius: var(--radius-md); border: 1px solid var(--color-border); margin-bottom: 16px;">
+                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px;">
+                            <div>
+                                <h4 style="font-family: var(--font-display); font-size: 1.1rem; font-weight: 600; color: var(--color-charcoal); margin-bottom: 4px;">
+                                    ${providerIcon} ${cal.name}
+                                </h4>
+                                <div style="font-size: 0.85rem; color: var(--color-warm-gray); margin-bottom: 8px;">
+                                    Provider: ${cal.provider.charAt(0).toUpperCase() + cal.provider.slice(1)}
+                                    <span style="margin: 0 8px;">•</span>
+                                    <span style="color: ${statusColor}; font-weight: 600;">${statusText}</span>
+                                </div>
+                                <div style="font-size: 0.85rem; color: var(--color-warm-gray);">
+                                    Last sync: ${lastSyncText}
+                                </div>
+                                ${cal.last_error ? `
+                                    <div style="font-size: 0.85rem; color: var(--color-terracotta); margin-top: 8px; font-weight: 500;">
+                                        ⚠ Error: ${cal.last_error}
+                                    </div>
+                                ` : ''}
+                            </div>
+                            <div style="display: flex; gap: 8px;">
+                                <button onclick="toggleCalendar(${cal.id}, ${!cal.is_active})"
+                                        style="padding: 8px 16px; font-size: 0.85rem; ${toggleBtnStyle}">
+                                    ${toggleBtnText}
+                                </button>
+                                <button onclick="syncCalendar(${cal.id})"
+                                        style="padding: 8px 16px; font-size: 0.85rem; background: var(--color-charcoal); color: white; border: 1px solid var(--color-charcoal);">
+                                    Sync Now
+                                </button>
+                                <button onclick="deleteCalendar(${cal.id})"
+                                        style="padding: 8px 16px; font-size: 0.85rem; background: var(--color-terracotta); color: white; border: 1px solid var(--color-terracotta);">
+                                    Remove
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            container.innerHTML = html;
+        }
+
+        // Add calendar
+        document.getElementById('calendar-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            const name = document.getElementById('calendar-name').value.trim();
+            const ical_url = document.getElementById('calendar-url').value.trim();
+
+            const messageEl = document.getElementById('calendar-message');
+            messageEl.textContent = 'Adding calendar...';
+
+            try {
+                const response = await fetch('/api/integrations/calendars', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, ical_url })
+                });
+
+                if (response.ok) {
+                    messageEl.textContent = '✓ Calendar added successfully!';
+                    document.getElementById('calendar-form').reset();
+                    setTimeout(() => {
+                        messageEl.textContent = '';
+                    }, 3000);
+                    await loadCalendars();
+                } else {
+                    const error = await response.json();
+                    messageEl.textContent = '✗ ' + (error.error || 'Failed to add calendar');
+                    messageEl.style.color = 'var(--color-terracotta)';
+                }
+            } catch (error) {
+                console.error('Error adding calendar:', error);
+                messageEl.textContent = '✗ Failed to add calendar';
+                messageEl.style.color = 'var(--color-terracotta)';
+            }
+        });
+
+        // Toggle calendar active status
+        async function toggleCalendar(id, isActive) {
+            try {
+                const response = await fetch(`/api/integrations/calendars/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ is_active: isActive })
+                });
+
+                if (response.ok) {
+                    await loadCalendars();
+                } else {
+                    alert('Failed to update calendar');
+                }
+            } catch (error) {
+                console.error('Error toggling calendar:', error);
+                alert('Failed to update calendar');
+            }
+        }
+
+        // Sync calendar manually
+        async function syncCalendar(id) {
+            try {
+                const response = await fetch(`/api/integrations/calendars/${id}/sync`, {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    alert('Calendar sync triggered! Check back in a moment.');
+                    setTimeout(loadCalendars, 2000);
+                } else {
+                    alert('Failed to sync calendar');
+                }
+            } catch (error) {
+                console.error('Error syncing calendar:', error);
+                alert('Failed to sync calendar');
+            }
+        }
+
+        // Delete calendar
+        async function deleteCalendar(id) {
+            if (!confirm('Are you sure you want to remove this calendar? All associated events will be deleted.')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/integrations/calendars/${id}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    await loadCalendars();
+                } else {
+                    alert('Failed to remove calendar');
+                }
+            } catch (error) {
+                console.error('Error deleting calendar:', error);
+                alert('Failed to remove calendar');
+            }
+        }
+
+        // Load calendars on page load
+        loadCalendars();
     </script>
 </body>
 </html>
