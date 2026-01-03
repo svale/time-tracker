@@ -42,8 +42,8 @@
             <!-- Date Navigation -->
             <div class="date-navigation">
                 <div class="date-picker-header">
-                    <h2 class="section-title" style="margin: 0;">Time Chronicle</h2>
-                    <p class="section-description" style="margin-top: 0.5rem;">Browse your activity history</p>
+                    <h2 class="section-title mb-0">Time Chronicle</h2>
+                    <p class="section-description mt-1">Browse your activity history</p>
                 </div>
 
                 <div class="date-controls">
@@ -67,9 +67,9 @@
             </div>
 
             <!-- Project Filter -->
-            <div class="filter-section" style="margin: 2rem 0; text-align: center;">
-                <label for="project-filter" style="font-family: 'IBM Plex Sans', sans-serif; font-size: 0.875rem; color: var(--text-secondary); margin-right: 1rem;">Filter by Project:</label>
-                <select id="project-filter" onchange="applyProjectFilter()" style="padding: 0.5rem 1rem; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-primary); font-family: 'IBM Plex Sans', sans-serif; cursor: pointer;">
+            <div class="filter-section">
+                <label for="project-filter">Filter by Project:</label>
+                <select id="project-filter" onchange="applyProjectFilter()">
                     <option value="">All Projects</option>
                 </select>
             </div>
@@ -411,7 +411,7 @@
                     let projectBadge = '';
                     if (activity.project_name && activity.project_color) {
                         projectBadge = `
-                            <span class="project-badge" style="background-color: ${activity.project_color}; color: white; padding: 0.25rem 0.5rem; border-radius: 2px; font-size: 0.75rem; margin-left: 0.5rem; font-weight: 500;">
+                            <span class="project-badge" style="background-color: ${activity.project_color};">
                                 ${escapeHtml(activity.project_name)}
                             </span>
                         `;

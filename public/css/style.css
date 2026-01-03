@@ -8,9 +8,10 @@
    ========================================================================== */
 
 :root {
-  /* Colors */
+  /* Colors - Palette */
   --color-cream: #FAF8F3;
   --color-surface: #FFFEFA;
+  --color-parchment: #f5f3ed;
   --color-charcoal: #2B2826;
   --color-charcoal-light: #4A4643;
   --color-warm-gray: #8B827C;
@@ -21,6 +22,24 @@
   --color-amber-light: #E5B07E;
   --color-border: #E8E2D8;
   --color-border-light: #F0EBE1;
+
+  /* Semantic Colors */
+  --color-bg: var(--color-cream);
+  --color-bg-surface: var(--color-surface);
+  --color-text-primary: var(--color-charcoal);
+  --color-text-secondary: var(--color-warm-gray);
+  --color-accent: var(--color-terracotta);
+  --color-accent-hover: var(--color-terracotta-dark);
+  --color-success: #2E7D32;
+  --color-danger: var(--color-terracotta);
+
+  /* Legacy aliases for backward compatibility */
+  --text-primary: var(--color-text-primary);
+  --text-secondary: var(--color-text-secondary);
+  --card-bg: var(--color-bg-surface);
+  --border-color: var(--color-border);
+  --accent-color: var(--color-accent);
+  --accent-rgb: 200, 90, 58;
 
   /* Typography */
   --font-display: 'Crimson Pro', Georgia, serif;
@@ -44,6 +63,12 @@
   --radius-sm: 4px;
   --radius-md: 8px;
   --radius-lg: 12px;
+
+  /* Z-index scale */
+  --z-noise-overlay: 9999;
+  --z-modal: 1000;
+  --z-header: 100;
+  --z-default: 1;
 }
 
 /* ==========================================================================
@@ -941,3 +966,388 @@ button:active,
 .mt-2 { margin-top: var(--spacing-sm); }
 .mt-3 { margin-top: var(--spacing-md); }
 .mt-4 { margin-top: var(--spacing-lg); }
+
+/* Filter section */
+.filter-section {
+  margin: 2rem 0;
+  text-align: center;
+}
+
+.filter-section label {
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  margin-right: 1rem;
+}
+
+.filter-section select {
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--border-color);
+  background: var(--card-bg);
+  color: var(--color-text-primary);
+  font-family: var(--font-body);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: all 0.2s ease;
+}
+
+.filter-section select:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px rgba(200, 90, 58, 0.1);
+}
+
+/* Project badge */
+.project-badge {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  border-radius: 2px;
+  font-size: 0.75rem;
+  margin-left: 0.5rem;
+  font-weight: 500;
+  color: white;
+}
+
+/* Calendar card styling */
+.calendar-card {
+  background: var(--color-cream);
+  padding: 20px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  margin-bottom: 16px;
+}
+
+.calendar-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  margin-bottom: 12px;
+}
+
+.calendar-card-title {
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--color-charcoal);
+  margin-bottom: 4px;
+}
+
+.calendar-card-meta {
+  font-size: 0.85rem;
+  color: var(--color-warm-gray);
+  margin-bottom: 8px;
+}
+
+.calendar-card-error {
+  font-size: 0.85rem;
+  color: var(--color-terracotta);
+  margin-top: 8px;
+  font-weight: 500;
+}
+
+.calendar-card-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* Settings form styling */
+.settings-form-section {
+  margin-bottom: 32px;
+}
+
+.settings-form-title {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--color-charcoal);
+  margin-bottom: 24px;
+}
+
+.settings-form-help {
+  font-size: 0.85rem;
+  color: var(--color-warm-gray);
+  margin-top: 8px;
+  font-style: italic;
+}
+
+.settings-form-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.settings-message {
+  color: var(--color-terracotta);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+/* ==========================================================================
+   Projects Page Specific Styles
+   ========================================================================== */
+
+.projects-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 1.5rem;
+  margin: 2rem 0;
+}
+
+.project-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  padding: 1.5rem;
+  position: relative;
+  opacity: 0;
+  animation: fadeInUp 0.4s ease-out forwards;
+}
+
+.project-card:hover {
+  border-color: var(--accent-color);
+}
+
+.project-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.project-color-indicator {
+  width: 16px;
+  height: 16px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  margin-top: 0.25rem;
+}
+
+.project-info {
+  flex: 1;
+}
+
+.project-name {
+  font-family: 'Crimson Pro', serif;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 0.25rem 0;
+}
+
+.project-description {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.project-stats {
+  display: flex;
+  gap: 1rem;
+  margin: 1rem 0;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-color);
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.project-stat {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.project-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.btn {
+  padding: 0.5rem 1rem;
+  border: 1px solid #2d2a24;
+  background: transparent;
+  color: #2d2a24;
+  cursor: pointer;
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 0.875rem;
+  transition: all 0.2s;
+}
+
+.btn:hover {
+  background: #8b7355;
+  border-color: #8b7355;
+  color: white;
+}
+
+.btn-primary {
+  background: #8b7355;
+  border-color: #8b7355;
+  color: white;
+}
+
+.btn-primary:hover {
+  background: #6d5a43;
+  border-color: #6d5a43;
+}
+
+.btn-danger {
+  color: #c44536;
+  border-color: #c44536;
+}
+
+.btn-danger:hover {
+  background: #c44536;
+  border-color: #c44536;
+  color: white;
+}
+
+.new-project-card {
+  border: 2px dashed var(--border-color);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.new-project-card:hover {
+  border-color: var(--accent-color);
+  background: rgba(var(--accent-rgb), 0.05);
+}
+
+.new-project-icon {
+  font-size: 3rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.5rem;
+}
+
+.new-project-text {
+  font-family: 'Crimson Pro', serif;
+  font-size: 1.125rem;
+  color: var(--text-secondary);
+}
+
+/* Modal styles */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+}
+
+.modal-overlay.active {
+  display: flex;
+}
+
+.modal {
+  background: #f5f3ed;
+  border: 2px solid #2d2a24;
+  padding: 2rem;
+  max-width: 500px;
+  width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.modal-title {
+  font-family: 'Crimson Pro', serif;
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin: 0 0 1.5rem 0;
+  color: #2d2a24;
+}
+
+.form-label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #2d2a24;
+  margin-bottom: 0.5rem;
+}
+
+.form-input {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #2d2a24;
+  background: #ffffff;
+  color: #2d2a24;
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 1rem;
+  box-sizing: border-box;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: #8b7355;
+  box-shadow: 0 0 0 2px rgba(139, 115, 85, 0.2);
+}
+
+.form-input.color-input {
+  padding: 0.375rem;
+  height: 3rem;
+}
+
+.form-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  margin-top: 2rem;
+}
+
+.domains-section {
+  margin-top: 2rem;
+  padding-top: 2rem;
+  border-top: 1px solid #2d2a24;
+}
+
+.domains-section h4 {
+  color: #2d2a24;
+}
+
+.domain-list {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0;
+}
+
+.domain-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem;
+  border: 1px solid #2d2a24;
+  margin-bottom: 0.5rem;
+  background: #ffffff;
+}
+
+.domain-name {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.875rem;
+  color: #2d2a24;
+}
+
+.domain-add-form {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+/* Override empty/loading state colors inside modals */
+.modal .empty-state,
+.modal .loading-state {
+  color: #5d5a54;
+}
+
+.modal .empty-state p,
+.modal .loading-state p {
+  color: #5d5a54;
+}
