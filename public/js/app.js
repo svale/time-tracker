@@ -27,10 +27,14 @@ const chartConfig = {
 
 /**
  * Update timeline chart with hourly data
+ * @param {string} projectFilter - Optional project ID to filter by
  */
-async function updateTimelineChart() {
+async function updateTimelineChart(projectFilter = '') {
   try {
-    const response = await fetch('/api/timeline');
+    const url = projectFilter
+      ? `/api/timeline?project_id=${projectFilter}`
+      : '/api/timeline';
+    const response = await fetch(url);
     const data = await response.json();
 
     const ctx = document.getElementById('timeline-chart');
@@ -41,9 +45,9 @@ async function updateTimelineChart() {
       timelineChart.destroy();
     }
 
-    // Prepare data
-    const labels = data.timeline.map(t => t.hour);
-    const values = data.timeline.map(t => t.minutes);
+    // Prepare data - API returns 'hours' array with 'total_seconds'
+    const labels = data.hours.map(h => h.hour);
+    const values = data.hours.map(h => Math.round(h.total_seconds / 60));
 
     // Create gradient
     const gradient = ctx.getContext('2d').createLinearGradient(0, 0, 0, 300);

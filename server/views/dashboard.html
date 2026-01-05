@@ -293,11 +293,11 @@
                     <div class="activity-entry" style="animation-delay: ${animationDelay}s">
                         <div class="activity-main">
                             <div class="activity-domain">
-                                ${displayName}
+                                ${escapeHtml(displayName)}
                                 ${projectBadge}
                             </div>
                             ${pageTitleHtml}
-                            <div class="activity-browser">${browserName}</div>
+                            <div class="activity-browser">${escapeHtml(browserName)}</div>
                         </div>
                         <div class="activity-stats">
                             <div class="activity-time">${activity.time}</div>

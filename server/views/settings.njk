@@ -403,4 +403,11 @@
                 }
             } catch (error) {
                 console.error('Error deleting calendar:', error);
+                alert('Failed to remove calendar');
+            }
+        }
+
+        // Load calendars on page load
+        loadCalendars();
+    </script>
 {% endblock %}

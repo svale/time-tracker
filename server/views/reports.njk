@@ -388,11 +388,11 @@
                         <div class="activity-entry" style="animation-delay: ${animationDelay}s">
                             <div class="activity-main">
                                 <div class="activity-domain">
-                                    ${displayName}
+                                    ${escapeHtml(displayName)}
                                     ${projectBadge}
                                 </div>
                                 ${pageTitleHtml}
-                                <div class="activity-browser">${browserName}</div>
+                                <div class="activity-browser">${escapeHtml(browserName)}</div>
                             </div>
                             <div class="activity-stats">
                                 <div class="activity-time">${activity.time}</div>
@@ -520,4 +520,10 @@
 
         // Initialize on page load - wait for DOM to be ready
         if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            // DOM is already loaded
+            init();
+        }
+    </script>
 {% endblock %}
