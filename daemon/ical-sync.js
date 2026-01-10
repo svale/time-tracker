@@ -125,8 +125,8 @@ async function syncCalendar(subscription) {
         subscription_id: id
       };
 
-      // Insert or update event
-      db.insertCalendarEvent(eventData);
+      // Insert or update event (without saving)
+      db.insertCalendarEventNoSave(eventData);
 
       // Track if this is new or updated
       if (last_sync && event.lastmodified && new Date(event.lastmodified) > new Date(last_sync)) {
@@ -138,6 +138,9 @@ async function syncCalendar(subscription) {
       console.error(`[Calendar Sync] Error processing event ${uid}:`, error.message);
     }
   }
+
+  // Single save after all events processed (calendar is in config db)
+  db.saveConfigDatabase();
 
   return { inserted: insertedCount, updated: updatedCount };
 }

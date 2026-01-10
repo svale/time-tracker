@@ -48,6 +48,190 @@ function getTodayString() {
 }
 
 /**
+ * Helper: Round timestamp down to nearest 30-minute mark
+ */
+function roundDownTo30Min(timestamp) {
+  const date = new Date(timestamp);
+  const minutes = date.getMinutes();
+  date.setMinutes(minutes < 30 ? 0 : 30, 0, 0);
+  return date.getTime();
+}
+
+/**
+ * Helper: Round timestamp up to nearest 30-minute mark
+ */
+function roundUpTo30Min(timestamp) {
+  const date = new Date(timestamp);
+  const minutes = date.getMinutes();
+  const seconds = date.getSeconds();
+  const ms = date.getMilliseconds();
+
+  // If already on 30-min boundary, don't round up
+  if ((minutes === 0 || minutes === 30) && seconds === 0 && ms === 0) {
+    return timestamp;
+  }
+
+  date.setMinutes(minutes < 30 ? 30 : 60, 0, 0);
+  return date.getTime();
+}
+
+/**
+ * Helper: Format timestamp as "HH:mm"
+ */
+function formatSlotTime(timestamp) {
+  const date = new Date(timestamp);
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
+}
+
+/**
+ * Helper: Format timestamp as "h:mm a" (e.g., "9:30 AM")
+ */
+function formatTime(timestamp) {
+  const date = new Date(timestamp);
+  let hours = date.getHours();
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  hours = hours % 12;
+  hours = hours ? hours : 12; // 0 should be 12
+  return `${hours}:${minutes} ${ampm}`;
+}
+
+/**
+ * Helper: Get activities overlapping a time slot, with proportional fill
+ */
+function getActivitiesInSlot(activities, slotStart, slotEnd) {
+  const slotDuration = slotEnd - slotStart;
+  const result = [];
+
+  activities.forEach(activity => {
+    const actStart = activity.start;
+    const actEnd = activity.end;
+
+    // Check for overlap
+    if (actEnd <= slotStart || actStart >= slotEnd) {
+      return; // No overlap
+    }
+
+    // Calculate overlap
+    const overlapStart = Math.max(actStart, slotStart);
+    const overlapEnd = Math.min(actEnd, slotEnd);
+    const overlapMs = overlapEnd - overlapStart;
+    const fillPercent = Math.round((overlapMs / slotDuration) * 100);
+
+    if (fillPercent > 0) {
+      result.push({
+        type: activity.type,
+        project_id: activity.project_id,
+        project_name: activity.project_name,
+        project_color: activity.project_color,
+        fill_percent: fillPercent
+      });
+    }
+  });
+
+  return result;
+}
+
+/**
+ * GET /api/workday-stats
+ * Returns workday statistics including start/end times, totals, and timeline
+ */
+router.get('/workday-stats', (req, res) => {
+  try {
+    const date = req.query.date || getTodayString();
+    const { sessions, calendarEvents } = db.getWorkdayStats(date);
+
+    // Combine all activities for workday boundary calculation
+    const allActivities = [
+      ...sessions.map(s => ({
+        start: s.start_time,
+        end: s.end_time,
+        duration: s.duration_seconds,
+        project_id: s.project_id,
+        project_name: s.project_name,
+        project_color: s.project_color,
+        type: 'browser'
+      })),
+      ...calendarEvents.map(e => ({
+        start: e.start_time,
+        end: e.end_time,
+        duration: Math.floor((e.end_time - e.start_time) / 1000),
+        project_id: e.project_id,
+        project_name: e.project_name,
+        project_color: e.project_color,
+        type: 'calendar'
+      }))
+    ].sort((a, b) => a.start - b.start);
+
+    // Calculate workday boundaries (ignore sessions < 5 min at edges)
+    const MIN_EDGE_DURATION = 300; // 5 minutes in seconds
+    const significantActivities = allActivities.filter(a => a.duration >= MIN_EDGE_DURATION);
+
+    const hasSufficientData = significantActivities.length > 0;
+    const workdayStart = hasSufficientData ? Math.min(...significantActivities.map(a => a.start)) : null;
+    const workdayEnd = hasSufficientData ? Math.max(...significantActivities.map(a => a.end)) : null;
+
+    // Calculate totals
+    const browserSeconds = sessions.reduce((sum, s) => sum + s.duration_seconds, 0);
+    const calendarSeconds = calendarEvents.reduce((sum, e) => sum + Math.floor((e.end_time - e.start_time) / 1000), 0);
+    const totalSeconds = browserSeconds + calendarSeconds;
+
+    // Generate 30-minute timeline slots
+    const slots = [];
+    if (hasSufficientData) {
+      const slotDuration = 30 * 60 * 1000; // 30 minutes in ms
+      let slotStart = roundDownTo30Min(workdayStart);
+      const slotEnd = roundUpTo30Min(workdayEnd);
+
+      while (slotStart < slotEnd) {
+        const slotEndTime = slotStart + slotDuration;
+        const slotActivities = getActivitiesInSlot(allActivities, slotStart, slotEndTime);
+        slots.push({
+          time: formatSlotTime(slotStart),
+          activities: slotActivities
+        });
+        slotStart = slotEndTime;
+      }
+    }
+
+    // Project breakdown
+    const projectTotals = {};
+    allActivities.forEach(a => {
+      const key = a.project_id || 'unassigned';
+      if (!projectTotals[key]) {
+        projectTotals[key] = {
+          project_id: a.project_id,
+          project_name: a.project_name || 'Unassigned',
+          project_color: a.project_color || '#9CA3AF',
+          seconds: 0
+        };
+      }
+      projectTotals[key].seconds += a.duration;
+    });
+
+    res.json({
+      date,
+      has_sufficient_data: hasSufficientData,
+      workday_start: workdayStart ? new Date(workdayStart).toISOString() : null,
+      workday_end: workdayEnd ? new Date(workdayEnd).toISOString() : null,
+      workday_start_formatted: workdayStart ? formatTime(workdayStart) : null,
+      workday_end_formatted: workdayEnd ? formatTime(workdayEnd) : null,
+      total_seconds: totalSeconds,
+      total_time: formatDuration(totalSeconds),
+      browser_seconds: browserSeconds,
+      calendar_seconds: calendarSeconds,
+      timeline_slots: slots,
+      project_breakdown: Object.values(projectTotals).sort((a, b) => b.seconds - a.seconds)
+    });
+  } catch (error) {
+    console.error('Error in /api/workday-stats:', error);
+    res.status(500).json({ error: 'Failed to get workday stats' });
+  }
+});
+
+/**
  * GET /api/daily-summary
  * Returns today's summary statistics
  */
@@ -263,6 +447,23 @@ router.get('/calendar-events', (req, res) => {
   } catch (error) {
     console.error('Error in /api/calendar-events:', error);
     res.status(500).json({ error: 'Failed to get calendar events' });
+  }
+});
+
+/**
+ * PUT /api/calendar-subscriptions/:id/worktime
+ * Update calendar subscription include_in_worktime setting
+ */
+router.put('/calendar-subscriptions/:id/worktime', (req, res) => {
+  try {
+    const { id } = req.params;
+    const { include_in_worktime } = req.body;
+
+    db.updateCalendarSubscriptionWorktime(id, include_in_worktime ? 1 : 0);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error updating calendar worktime:', error);
+    res.status(500).json({ error: 'Failed to update calendar subscription' });
   }
 });
 

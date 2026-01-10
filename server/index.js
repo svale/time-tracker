@@ -82,11 +82,36 @@ async function start() {
   }
 }
 
-// Graceful shutdown
-process.on('SIGINT', () => {
-  console.log('\nShutting down server...');
+// Graceful shutdown handler
+function gracefulShutdown(signal) {
+  console.log(`\nReceived ${signal}, shutting down server...`);
   db.closeDatabase();
   process.exit(0);
+}
+
+// Handle all shutdown signals
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+
+// Handle uncaught errors
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught exception:', error);
+  try {
+    db.closeDatabase();
+  } catch (e) {
+    console.error('Error closing database during shutdown:', e);
+  }
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (error) => {
+  console.error('Unhandled rejection:', error);
+  try {
+    db.closeDatabase();
+  } catch (e) {
+    console.error('Error closing database during shutdown:', e);
+  }
+  process.exit(1);
 });
 
 // Start if run directly

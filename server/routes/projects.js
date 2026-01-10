@@ -9,6 +9,32 @@ const db = require('../../database/db');
 const router = express.Router();
 
 /**
+ * Extract domain from a URL or domain string
+ * Handles full URLs, URLs without protocol, and plain domains
+ * @param {string} input - URL or domain string
+ * @returns {string} - Extracted domain (lowercase)
+ */
+function extractDomain(input) {
+  if (!input) return '';
+
+  const trimmed = input.trim();
+  if (!trimmed) return '';
+
+  try {
+    // Try adding protocol if missing to make it a valid URL
+    let url = trimmed;
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = 'https://' + url;
+    }
+    const parsed = new URL(url);
+    return parsed.hostname.toLowerCase();
+  } catch {
+    // Not a valid URL, return as-is (trimmed, lowercase)
+    return trimmed.toLowerCase();
+  }
+}
+
+/**
  * GET /api/projects
  * List all projects
  */
@@ -143,6 +169,7 @@ router.get('/projects/:id/domains', (req, res) => {
 /**
  * POST /api/projects/:id/domains
  * Add a domain mapping to a project
+ * Also retroactively updates existing sessions matching this domain
  */
 router.post('/projects/:id/domains', (req, res) => {
   try {
@@ -153,9 +180,28 @@ router.post('/projects/:id/domains', (req, res) => {
       return res.status(400).json({ error: 'Domain is required' });
     }
 
-    db.addProjectDomain(parseInt(id, 10), domain.trim().toLowerCase());
-    const domains = db.getProjectDomains(parseInt(id, 10));
-    res.status(201).json(domains);
+    // Extract domain from URL (handles full URLs, URLs without protocol, plain domains)
+    const cleanDomain = extractDomain(domain);
+    if (!cleanDomain) {
+      return res.status(400).json({ error: 'Invalid domain or URL' });
+    }
+
+    const projectId = parseInt(id, 10);
+
+    // Add the domain mapping
+    db.addProjectDomain(projectId, cleanDomain);
+
+    // Retroactively update existing sessions that match this domain
+    const updatedCount = db.updateSessionsByDomain(cleanDomain, projectId);
+
+    const domains = db.getProjectDomains(projectId);
+    res.status(201).json({
+      domains,
+      sessions_updated: updatedCount,
+      message: updatedCount > 0
+        ? `Domain added and ${updatedCount} existing session${updatedCount !== 1 ? 's' : ''} updated`
+        : 'Domain added'
+    });
   } catch (error) {
     console.error('Error in POST /api/projects/:id/domains:', error);
     if (error.message.includes('already mapped')) {

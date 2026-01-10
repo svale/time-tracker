@@ -1351,3 +1351,150 @@ button:active,
 .modal .loading-state p {
   color: #5d5a54;
 }
+
+/* ==========================================================================
+   Workday Summary
+   ========================================================================== */
+
+.workday-header {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.workday-stat {
+  text-align: center;
+  padding: 1rem;
+  background: var(--color-parchment);
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+}
+
+.workday-stat-value {
+  font-size: 1.5rem;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  color: var(--color-charcoal);
+}
+
+.workday-stat-label {
+  font-size: 0.85rem;
+  color: var(--color-warm-gray);
+  margin-top: 0.25rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Workday Timeline */
+.workday-timeline {
+  margin: 1.5rem 0;
+  padding: 1rem;
+  background: var(--color-parchment);
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+}
+
+.timeline-slots {
+  display: flex;
+  gap: 2px;
+  height: 40px;
+}
+
+.timeline-slot {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 20px;
+}
+
+.timeline-slot-bar {
+  flex: 1;
+  border-radius: 4px;
+  background: var(--color-cream);
+  transition: opacity 0.2s ease;
+}
+
+.timeline-slot-bar:hover {
+  opacity: 1 !important;
+}
+
+.timeline-slot-label {
+  font-size: 0.65rem;
+  text-align: center;
+  color: var(--color-warm-gray);
+  margin-top: 4px;
+  font-family: var(--font-mono);
+  min-height: 12px;
+}
+
+/* Project breakdown */
+.project-breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.project-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.75rem;
+  background: var(--color-cream);
+  border-radius: 16px;
+  font-size: 0.85rem;
+  border: 1px solid var(--color-border);
+}
+
+.project-chip-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+/* Calendar worktime toggle in settings */
+.calendar-worktime-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--color-warm-gray);
+  cursor: pointer;
+  margin-top: 0.5rem;
+}
+
+.calendar-worktime-toggle input {
+  cursor: pointer;
+  width: 16px;
+  height: 16px;
+}
+
+/* Responsive adjustments for workday summary */
+@media (max-width: 768px) {
+  .workday-header {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  .workday-stat-value {
+    font-size: 1.25rem;
+  }
+
+  .timeline-slots {
+    height: 30px;
+  }
+
+  .timeline-slot-label {
+    font-size: 0.55rem;
+  }
+
+  .project-breakdown {
+    gap: 0.5rem;
+  }
+
+  .project-chip {
+    font-size: 0.75rem;
+    padding: 0.2rem 0.5rem;
+  }
+}

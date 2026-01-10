@@ -299,6 +299,12 @@
                                 <div class="calendar-card-meta">
                                     Last sync: ${lastSyncText}
                                 </div>
+                                <label class="calendar-worktime-toggle">
+                                    <input type="checkbox"
+                                           ${cal.include_in_worktime ? 'checked' : ''}
+                                           onchange="toggleCalendarWorktime(${cal.id}, this.checked)">
+                                    Include in work time
+                                </label>
                                 ${cal.last_error ? `
                                     <div class="calendar-card-error">
                                         ⚠ Error: ${cal.last_error}
@@ -362,6 +368,19 @@
                 messageEl.style.color = 'var(--color-terracotta)';
             }
         });
+
+        // Toggle calendar worktime setting
+        async function toggleCalendarWorktime(calendarId, includeInWorktime) {
+            try {
+                await fetch(`/api/calendar-subscriptions/${calendarId}/worktime`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ include_in_worktime: includeInWorktime })
+                });
+            } catch (error) {
+                console.error('Error updating calendar worktime setting:', error);
+            }
+        }
 
         // Toggle calendar active status
         async function toggleCalendar(id, isActive) {

@@ -47,13 +47,13 @@
                 <span class="separator-ornament">◆</span>
             </div>
 
-            <!-- Summary section -->
+            <!-- Workday Summary section -->
             <section class="summary-section">
-                <h2 class="section-title" id="summary-title">Activity Summary</h2>
-                <div id="summary-cards">
+                <h2 class="section-title" id="summary-title">Workday Summary</h2>
+                <div id="workday-summary">
                     <div class="loading-state">
                         <div class="loading-spinner"></div>
-                        <p>Gathering temporal data...</p>
+                        <p>Calculating workday...</p>
                     </div>
                 </div>
             </section>
@@ -265,67 +265,123 @@
         async function loadData() {
             updateDateDisplay();
             await Promise.all([
-                loadSummary(),
+                loadWorkdaySummary(),
                 loadActivities(),
                 loadTimeline()
             ]);
         }
 
-        // Load summary data
-        async function loadSummary() {
-            const summaryCards = document.getElementById('summary-cards');
-            summaryCards.innerHTML = `
+        // Load workday summary data
+        async function loadWorkdaySummary() {
+            const container = document.getElementById('workday-summary');
+            container.innerHTML = `
                 <div class="loading-state">
                     <div class="loading-spinner"></div>
-                    <p>Gathering temporal data...</p>
+                    <p>Calculating workday...</p>
                 </div>
             `;
 
             try {
-                let url = `/api/daily-summary?date=${currentDate}`;
-                if (currentProjectFilter) {
-                    url += `&project_id=${currentProjectFilter}`;
-                }
-
+                const url = `/api/workday-stats?date=${currentDate}`;
                 const response = await fetch(url);
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                 }
                 const data = await response.json();
-
-                const html = `
-                    <div class="summary-grid">
-                        <div class="stat-card stat-card--primary">
-                            <div class="stat-ornament">⟡</div>
-                            <div class="stat-value">${data.total_time}</div>
-                            <div class="stat-label">Total Active Time</div>
-                            <div class="stat-detail">${data.total_sessions} sessions recorded</div>
-                        </div>
-                        <div class="stat-card stat-card--secondary">
-                            <div class="stat-ornament">⟡</div>
-                            <div class="stat-value">${data.top_activities.length}</div>
-                            <div class="stat-label">Domains Visited</div>
-                            <div class="stat-detail">From browser history</div>
-                        </div>
-                        <div class="stat-card stat-card--accent">
-                            <div class="stat-ornament">⟡</div>
-                            <div class="stat-value">${data.top_activities[0] ? data.top_activities[0].domain || data.top_activities[0].app : '—'}</div>
-                            <div class="stat-label">Most Visited</div>
-                            <div class="stat-detail">${data.top_activities[0] ? data.top_activities[0].time : 'No data'}</div>
-                        </div>
-                    </div>
-                `;
-
-                summaryCards.innerHTML = html;
+                renderWorkdaySummary(container, data);
             } catch (error) {
-                console.error('Error loading summary:', error);
-                summaryCards.innerHTML = `
+                console.error('Error loading workday summary:', error);
+                container.innerHTML = `
                     <div class="empty-state">
                         <div class="empty-ornament">◇</div>
-                        <p class="empty-message">Failed to load summary data</p>
+                        <p class="empty-message">Failed to load workday summary</p>
                     </div>
                 `;
             }
+        }
+
+        function renderWorkdaySummary(container, data) {
+            if (!data.has_sufficient_data) {
+                const isToday = currentDate === getTodayString();
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-ornament">◇</div>
+                        <p class="empty-message">No significant activity recorded on this date.</p>
+                        ${isToday ? '<p class="empty-hint">Browser history is checked every 5 minutes. Significant activity (>5 min) needed.</p>' : ''}
+                    </div>
+                `;
+                return;
+            }
+
+            // Workday header stats
+            let html = `
+                <div class="workday-header">
+                    <div class="workday-stat">
+                        <div class="workday-stat-value">${data.workday_start_formatted || '—'}</div>
+                        <div class="workday-stat-label">Started</div>
+                    </div>
+                    <div class="workday-stat">
+                        <div class="workday-stat-value">${data.workday_end_formatted || '—'}</div>
+                        <div class="workday-stat-label">Ended</div>
+                    </div>
+                    <div class="workday-stat">
+                        <div class="workday-stat-value">${data.total_time}</div>
+                        <div class="workday-stat-label">Total Active</div>
+                    </div>
+                </div>
+            `;
+
+            // Timeline visualization
+            if (data.timeline_slots && data.timeline_slots.length > 0) {
+                html += `<div class="workday-timeline">`;
+                html += `<div class="timeline-slots">`;
+
+                data.timeline_slots.forEach((slot, index) => {
+                    const showLabel = index === 0 || index === data.timeline_slots.length - 1 || index % 2 === 0;
+                    let barStyle = 'background: var(--color-cream);';
+
+                    if (slot.activities && slot.activities.length > 0) {
+                        // Use the dominant project color or mix
+                        const totalFill = slot.activities.reduce((sum, a) => sum + a.fill_percent, 0);
+                        const dominantActivity = slot.activities.reduce((prev, curr) =>
+                            (prev.fill_percent > curr.fill_percent) ? prev : curr
+                        );
+                        const color = dominantActivity.project_color || '#9CA3AF';
+                        const opacity = Math.min(totalFill / 100, 1);
+                        barStyle = `background: ${color}; opacity: ${0.4 + (opacity * 0.6)};`;
+                    }
+
+                    html += `
+                        <div class="timeline-slot">
+                            <div class="timeline-slot-bar" style="${barStyle}" title="${slot.time}"></div>
+                            ${showLabel ? `<div class="timeline-slot-label">${slot.time}</div>` : '<div class="timeline-slot-label"></div>'}
+                        </div>
+                    `;
+                });
+
+                html += `</div></div>`;
+            }
+
+            // Project breakdown
+            if (data.project_breakdown && data.project_breakdown.length > 0) {
+                html += `<div class="project-breakdown">`;
+                data.project_breakdown.forEach(project => {
+                    const hours = Math.floor(project.seconds / 3600);
+                    const minutes = Math.floor((project.seconds % 3600) / 60);
+                    const timeStr = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+
+                    html += `
+                        <div class="project-chip">
+                            <div class="project-chip-color" style="background: ${project.project_color};"></div>
+                            <span>${escapeHtml(project.project_name)}</span>
+                            <span style="color: var(--color-warm-gray); font-family: var(--font-mono); font-size: 0.8rem;">${timeStr}</span>
+                        </div>
+                    `;
+                });
+                html += `</div>`;
+            }
+
+            container.innerHTML = html;
         }
 
         // Load activities data

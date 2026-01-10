@@ -40,6 +40,22 @@ async function startDaemon() {
   console.log('Starting git activity tracker...');
   gitTracker.startTracking();
 
+  // Periodic database reload (every 60 seconds)
+  console.log('Setting up periodic database reload...');
+  const DB_RELOAD_INTERVAL = 60 * 1000; // 60 seconds
+
+  const dbReloadInterval = setInterval(async () => {
+    try {
+      await db.reloadDatabase();
+      console.log('[DB] Reloaded from disk');
+    } catch (error) {
+      console.error('[DB] Reload error:', error.message);
+    }
+  }, DB_RELOAD_INTERVAL);
+
+  // Store interval for cleanup
+  global.dbReloadInterval = dbReloadInterval;
+
   // Start calendar sync (every 15 minutes)
   console.log('Starting iCal calendar sync...');
   const CALENDAR_SYNC_INTERVAL = 15 * 60 * 1000; // 15 minutes
@@ -92,6 +108,11 @@ function shutdown() {
   // Stop calendar sync
   if (global.calendarSyncInterval) {
     clearInterval(global.calendarSyncInterval);
+  }
+
+  // Stop database reload interval
+  if (global.dbReloadInterval) {
+    clearInterval(global.dbReloadInterval);
   }
 
   // Close database
