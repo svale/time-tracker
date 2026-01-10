@@ -888,6 +888,274 @@ function removeProjectKeyword(id) {
   saveDatabase();
 }
 
+/**
+ * Git Activity Functions
+ */
+
+/**
+ * Get all git repositories
+ */
+function getGitRepositories() {
+  if (!db) throw new Error('Database not initialized');
+
+  const results = [];
+  const stmt = db.prepare(`
+    SELECT r.*, p.name as project_name, p.color as project_color
+    FROM git_repositories r
+    LEFT JOIN projects p ON r.project_id = p.id
+    ORDER BY r.repo_name
+  `);
+
+  while (stmt.step()) {
+    results.push(stmt.getAsObject());
+  }
+  stmt.free();
+
+  return results;
+}
+
+/**
+ * Get a single git repository by ID
+ */
+function getGitRepository(id) {
+  if (!db) throw new Error('Database not initialized');
+
+  const stmt = db.prepare(`
+    SELECT r.*, p.name as project_name, p.color as project_color
+    FROM git_repositories r
+    LEFT JOIN projects p ON r.project_id = p.id
+    WHERE r.id = ?
+  `);
+  stmt.bind([id]);
+
+  let result = null;
+  if (stmt.step()) {
+    result = stmt.getAsObject();
+  }
+  stmt.free();
+
+  return result;
+}
+
+/**
+ * Create a git repository entry
+ */
+function createGitRepository({ repo_path, repo_name, project_id = null, is_active = true }) {
+  if (!db) throw new Error('Database not initialized');
+
+  const stmt = db.prepare(`
+    INSERT INTO git_repositories (repo_path, repo_name, project_id, is_active)
+    VALUES (?, ?, ?, ?)
+  `);
+
+  try {
+    stmt.run([repo_path, repo_name, project_id, is_active ? 1 : 0]);
+    stmt.free();
+
+    // Get the inserted ID
+    const idStmt = db.prepare('SELECT last_insert_rowid() as id');
+    idStmt.step();
+    const id = idStmt.getAsObject().id;
+    idStmt.free();
+
+    saveDatabase();
+    return id;
+  } catch (error) {
+    stmt.free();
+    throw error;
+  }
+}
+
+/**
+ * Update git repository
+ */
+function updateGitRepository(id, { project_id, is_active, last_scanned, last_commit_hash }) {
+  if (!db) throw new Error('Database not initialized');
+
+  const updates = [];
+  const values = [];
+
+  if (project_id !== undefined) {
+    updates.push('project_id = ?');
+    values.push(project_id);
+  }
+  if (is_active !== undefined) {
+    updates.push('is_active = ?');
+    values.push(is_active ? 1 : 0);
+  }
+  if (last_scanned !== undefined) {
+    updates.push('last_scanned = ?');
+    values.push(last_scanned);
+  }
+  if (last_commit_hash !== undefined) {
+    updates.push('last_commit_hash = ?');
+    values.push(last_commit_hash);
+  }
+
+  if (updates.length === 0) return;
+
+  updates.push('updated_at = ?');
+  values.push(Date.now());
+
+  values.push(id);
+
+  const stmt = db.prepare(`
+    UPDATE git_repositories
+    SET ${updates.join(', ')}
+    WHERE id = ?
+  `);
+
+  stmt.run(values);
+  stmt.free();
+
+  saveDatabase();
+}
+
+/**
+ * Delete git repository
+ */
+function deleteGitRepository(id) {
+  if (!db) throw new Error('Database not initialized');
+
+  const stmt = db.prepare('DELETE FROM git_repositories WHERE id = ?');
+  stmt.run([id]);
+  stmt.free();
+
+  saveDatabase();
+}
+
+/**
+ * Insert git activity
+ */
+function insertGitActivity({
+  repo_id,
+  action_type,
+  commit_hash = null,
+  commit_message = null,
+  branch_name = null,
+  author_name = null,
+  author_email = null,
+  timestamp,
+  project_id = null
+}) {
+  if (!db) throw new Error('Database not initialized');
+
+  const stmt = db.prepare(`
+    INSERT INTO git_activity (
+      repo_id, action_type, commit_hash, commit_message,
+      branch_name, author_name, author_email, timestamp, project_id
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  stmt.run([
+    repo_id,
+    action_type,
+    commit_hash,
+    commit_message,
+    branch_name,
+    author_name,
+    author_email,
+    timestamp,
+    project_id
+  ]);
+  stmt.free();
+
+  saveDatabase();
+}
+
+/**
+ * Get git activity for a date range
+ */
+function getGitActivity(startTime, endTime, projectId = null) {
+  if (!db) throw new Error('Database not initialized');
+
+  let query = `
+    SELECT
+      a.*,
+      r.repo_name,
+      r.repo_path,
+      p.name as project_name,
+      p.color as project_color
+    FROM git_activity a
+    JOIN git_repositories r ON a.repo_id = r.id
+    LEFT JOIN projects p ON a.project_id = p.id
+    WHERE a.timestamp >= ? AND a.timestamp <= ?
+  `;
+
+  const params = [startTime, endTime];
+
+  if (projectId !== null) {
+    query += ' AND a.project_id = ?';
+    params.push(projectId);
+  }
+
+  query += ' ORDER BY a.timestamp DESC';
+
+  const results = [];
+  const stmt = db.prepare(query);
+  stmt.bind(params);
+
+  while (stmt.step()) {
+    results.push(stmt.getAsObject());
+  }
+  stmt.free();
+
+  return results;
+}
+
+/**
+ * Get git activity summary for a day (aggregated by repo/project)
+ */
+function getGitActivitySummary(dateString, projectId = null) {
+  if (!db) throw new Error('Database not initialized');
+
+  const startOfDay = new Date(dateString).setHours(0, 0, 0, 0);
+  const endOfDay = new Date(dateString).setHours(23, 59, 59, 999);
+
+  let query = `
+    SELECT
+      a.repo_id,
+      r.repo_name,
+      r.repo_path,
+      a.project_id,
+      p.name as project_name,
+      p.color as project_color,
+      COUNT(*) as activity_count,
+      COUNT(CASE WHEN a.action_type = 'commit' THEN 1 END) as commit_count,
+      COUNT(CASE WHEN a.action_type = 'merge' THEN 1 END) as merge_count,
+      MIN(a.timestamp) as first_activity,
+      MAX(a.timestamp) as last_activity
+    FROM git_activity a
+    JOIN git_repositories r ON a.repo_id = r.id
+    LEFT JOIN projects p ON a.project_id = p.id
+    WHERE a.timestamp >= ? AND a.timestamp <= ?
+  `;
+
+  const params = [startOfDay, endOfDay];
+
+  if (projectId !== null) {
+    query += ' AND a.project_id = ?';
+    params.push(projectId);
+  }
+
+  query += `
+    GROUP BY a.repo_id, a.project_id
+    ORDER BY activity_count DESC
+  `;
+
+  const results = [];
+  const stmt = db.prepare(query);
+  stmt.bind(params);
+
+  while (stmt.step()) {
+    results.push(stmt.getAsObject());
+  }
+  stmt.free();
+
+  return results;
+}
+
 module.exports = {
   initDatabase,
   saveDatabase,
@@ -924,5 +1192,14 @@ module.exports = {
   assignCalendarEventToProject,
   getProjectKeywords,
   addProjectKeyword,
-  removeProjectKeyword
+  removeProjectKeyword,
+  // Git activity functions
+  getGitRepositories,
+  getGitRepository,
+  createGitRepository,
+  updateGitRepository,
+  deleteGitRepository,
+  insertGitActivity,
+  getGitActivity,
+  getGitActivitySummary
 };

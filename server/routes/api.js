@@ -294,4 +294,153 @@ router.put('/calendar-events/:id/project', (req, res) => {
   }
 });
 
+/**
+ * GET /api/git-repositories
+ * Get all tracked git repositories
+ */
+router.get('/git-repositories', (req, res) => {
+  try {
+    const repos = db.getGitRepositories();
+    res.json(repos);
+  } catch (error) {
+    console.error('Error in /api/git-repositories:', error);
+    res.status(500).json({ error: 'Failed to get git repositories' });
+  }
+});
+
+/**
+ * PUT /api/git-repositories/:id
+ * Update git repository (mainly for project assignment)
+ */
+router.put('/git-repositories/:id', (req, res) => {
+  try {
+    const repoId = parseInt(req.params.id, 10);
+    const { project_id, is_active } = req.body;
+
+    if (!repoId) {
+      return res.status(400).json({ error: 'Invalid repository ID' });
+    }
+
+    const updates = {};
+    if (project_id !== undefined) {
+      updates.project_id = project_id === null ? null : parseInt(project_id, 10);
+    }
+    if (is_active !== undefined) {
+      updates.is_active = is_active;
+    }
+
+    db.updateGitRepository(repoId, updates);
+
+    res.json({
+      success: true,
+      message: 'Repository updated'
+    });
+  } catch (error) {
+    console.error('Error in PUT /api/git-repositories/:id:', error);
+    res.status(500).json({ error: 'Failed to update repository' });
+  }
+});
+
+/**
+ * DELETE /api/git-repositories/:id
+ * Remove a git repository from tracking
+ */
+router.delete('/git-repositories/:id', (req, res) => {
+  try {
+    const repoId = parseInt(req.params.id, 10);
+
+    if (!repoId) {
+      return res.status(400).json({ error: 'Invalid repository ID' });
+    }
+
+    db.deleteGitRepository(repoId);
+
+    res.json({
+      success: true,
+      message: 'Repository removed from tracking'
+    });
+  } catch (error) {
+    console.error('Error in DELETE /api/git-repositories/:id:', error);
+    res.status(500).json({ error: 'Failed to delete repository' });
+  }
+});
+
+/**
+ * GET /api/git-activity
+ * Get git activity for a specific date
+ */
+router.get('/git-activity', (req, res) => {
+  try {
+    const date = req.query.date || getTodayString();
+    const projectId = req.query.project_id ? parseInt(req.query.project_id, 10) : null;
+
+    const startOfDay = new Date(date).setHours(0, 0, 0, 0);
+    const endOfDay = new Date(date).setHours(23, 59, 59, 999);
+
+    const activities = db.getGitActivity(startOfDay, endOfDay, projectId);
+
+    // Format activity data
+    const formatted = activities.map(activity => ({
+      id: activity.id,
+      repo_name: activity.repo_name,
+      repo_path: activity.repo_path,
+      action_type: activity.action_type,
+      commit_hash: activity.commit_hash ? activity.commit_hash.substring(0, 7) : null, // Short hash
+      commit_message: activity.commit_message,
+      branch_name: activity.branch_name,
+      author_name: activity.author_name,
+      timestamp: activity.timestamp,
+      project_id: activity.project_id || null,
+      project_name: activity.project_name || null,
+      project_color: activity.project_color || null
+    }));
+
+    res.json({
+      date,
+      count: formatted.length,
+      activities: formatted
+    });
+  } catch (error) {
+    console.error('Error in /api/git-activity:', error);
+    res.status(500).json({ error: 'Failed to get git activity' });
+  }
+});
+
+/**
+ * GET /api/git-activity-summary
+ * Get aggregated git activity summary for a date
+ */
+router.get('/git-activity-summary', (req, res) => {
+  try {
+    const date = req.query.date || getTodayString();
+    const projectId = req.query.project_id ? parseInt(req.query.project_id, 10) : null;
+
+    const summary = db.getGitActivitySummary(date, projectId);
+
+    // Format summary data
+    const formatted = summary.map(item => ({
+      repo_id: item.repo_id,
+      repo_name: item.repo_name,
+      repo_path: item.repo_path,
+      project_id: item.project_id || null,
+      project_name: item.project_name || null,
+      project_color: item.project_color || null,
+      activity_count: item.activity_count || 0,
+      commit_count: item.commit_count || 0,
+      merge_count: item.merge_count || 0,
+      first_activity: item.first_activity,
+      last_activity: item.last_activity
+    }));
+
+    res.json({
+      date,
+      count: formatted.length,
+      summary: formatted
+    });
+  } catch (error) {
+    console.error('Error in /api/git-activity-summary:', error);
+    res.status(500).json({ error: 'Failed to get git activity summary' });
+  }
+});
+
 module.exports = router;

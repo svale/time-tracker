@@ -76,6 +76,20 @@
                     </div>
                 </div>
             </section>
+
+            <!-- Git Activity -->
+            <section class="activities-section mt-4">
+                <div class="section-header">
+                    <h2 class="section-title">Git Activity</h2>
+                    <p class="section-description">Local repository commits, merges, and branches</p>
+                </div>
+                <div class="activities-container" id="git-activity">
+                    <div class="loading-state">
+                        <div class="loading-spinner"></div>
+                        <p>Loading git activity...</p>
+                    </div>
+                </div>
+            </section>
 {% endblock %}
 
 {% block scripts %}
@@ -135,6 +149,8 @@
             // Reload data with new filter
             loadDailySummary();
             loadDailyReport();
+            loadCalendarEvents();
+            loadGitActivity();
         }
 
         // Load daily summary
@@ -290,9 +306,12 @@
 
         async function loadCalendarEvents() {
             const container = document.getElementById('calendar-events');
+            const url = currentProjectFilter
+                ? `/api/calendar-events?project_id=${currentProjectFilter}`
+                : '/api/calendar-events';
 
             try {
-                const response = await fetch('/api/calendar-events');
+                const response = await fetch(url);
                 const data = await response.json();
 
                 if (data.events.length === 0) {
@@ -371,6 +390,102 @@
             }
         }
 
+        // ===================================
+        // Git Activity Display
+        // ===================================
+
+        async function loadGitActivity() {
+            const container = document.getElementById('git-activity');
+            const url = currentProjectFilter
+                ? `/api/git-activity?project_id=${currentProjectFilter}`
+                : '/api/git-activity';
+
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+
+                if (data.activities.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-ornament">◇</div>
+                            <p class="empty-message">No git activity for today.</p>
+                            <p class="empty-hint">The daemon scans for repositories in common locations automatically.</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                let html = '<div class="activities-list">';
+
+                data.activities.forEach((activity, index) => {
+                    const animationDelay = index * 0.05;
+                    const timestamp = new Date(activity.timestamp).toLocaleTimeString('en-US', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: true
+                    });
+
+                    // Action icon
+                    const actionIcons = {
+                        'commit': '💾',
+                        'merge': '🔀',
+                        'branch': '🌿',
+                        'pull': '⬇️',
+                        'rebase': '⚙️',
+                        'cherry-pick': '🍒'
+                    };
+                    const icon = actionIcons[activity.action_type] || '📝';
+
+                    // Project badge HTML
+                    let projectBadge = '';
+                    if (activity.project_name && activity.project_color) {
+                        projectBadge = `
+                            <span class="project-badge" style="background-color: ${activity.project_color};">
+                                ${escapeHtml(activity.project_name)}
+                            </span>
+                        `;
+                    }
+
+                    // Commit message (truncate if too long)
+                    const commitMessage = activity.commit_message || '';
+                    const displayMessage = commitMessage.length > 60
+                        ? commitMessage.substring(0, 60) + '...'
+                        : commitMessage;
+
+                    html += `
+                        <div class="activity-entry" style="animation-delay: ${animationDelay}s; background: linear-gradient(to right, var(--color-cream) 0%, var(--color-cream) 4px, var(--color-parchment) 4px, var(--color-parchment) 100%);">
+                            <div class="activity-main">
+                                <div class="activity-domain">
+                                    ${icon} ${escapeHtml(activity.repo_name)}
+                                    ${projectBadge}
+                                </div>
+                                ${displayMessage ? `<div class="activity-title">${escapeHtml(displayMessage)}</div>` : ''}
+                                <div class="activity-browser">
+                                    ${activity.branch_name ? `Branch: ${escapeHtml(activity.branch_name)}` : ''}
+                                    ${activity.commit_hash ? ` • ${activity.commit_hash}` : ''}
+                                </div>
+                            </div>
+                            <div class="activity-stats">
+                                <div class="activity-time">${timestamp}</div>
+                                <div class="activity-sessions">${activity.action_type}</div>
+                            </div>
+                        </div>
+                    `;
+                });
+
+                html += '</div>';
+                container.innerHTML = html;
+            } catch (error) {
+                console.error('Error loading git activity:', error);
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-ornament">◇</div>
+                        <p class="empty-message">Failed to load git activity.</p>
+                    </div>
+                `;
+            }
+        }
+
         // Timeline chart is handled by /js/app.js
 
         // ===================================
@@ -382,12 +497,14 @@
         loadDailySummary();
         loadDailyReport();
         loadCalendarEvents();
+        loadGitActivity();
 
         // Refresh data every 60 seconds
         setInterval(() => {
             loadDailySummary();
             loadDailyReport();
             loadCalendarEvents();
+            loadGitActivity();
         }, 60000);
     </script>
 {% endblock %}
