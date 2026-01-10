@@ -91,6 +91,46 @@ INSERT OR IGNORE INTO settings (key, value) VALUES ('polling_interval_minutes', 
 INSERT OR IGNORE INTO settings (key, value) VALUES ('session_gap_minutes', '5');
 INSERT OR IGNORE INTO settings (key, value) VALUES ('excluded_domains', '[]');
 
+-- Git repositories table - stores repos we're tracking
+CREATE TABLE IF NOT EXISTS git_repositories (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    repo_path TEXT NOT NULL UNIQUE,
+    repo_name TEXT NOT NULL,
+    project_id INTEGER,
+    is_active BOOLEAN DEFAULT 1,
+    last_commit_hash TEXT,
+    last_scanned INTEGER,
+    created_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
+    updated_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
+);
+
+-- Git activity table - stores individual git events
+CREATE TABLE IF NOT EXISTS git_activity (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    repo_id INTEGER NOT NULL,
+    action_type TEXT NOT NULL,
+    commit_hash TEXT,
+    commit_message TEXT,
+    branch_name TEXT,
+    author_name TEXT,
+    author_email TEXT,
+    timestamp INTEGER NOT NULL,
+    project_id INTEGER,
+    created_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
+    FOREIGN KEY (repo_id) REFERENCES git_repositories(id) ON DELETE CASCADE,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_git_activity_timestamp ON git_activity(timestamp);
+CREATE INDEX IF NOT EXISTS idx_git_activity_repo ON git_activity(repo_id);
+CREATE INDEX IF NOT EXISTS idx_git_activity_project ON git_activity(project_id);
+CREATE INDEX IF NOT EXISTS idx_git_repositories_project ON git_repositories(project_id);
+
+-- Git settings
+INSERT OR IGNORE INTO settings (key, value) VALUES ('git_scan_interval_minutes', '5');
+INSERT OR IGNORE INTO settings (key, value) VALUES ('git_scan_enabled', 'true');
+
 -- Migration tracking for config database
 CREATE TABLE IF NOT EXISTS config_schema_migrations (
     version INTEGER PRIMARY KEY,
