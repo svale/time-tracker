@@ -125,6 +125,23 @@
                     </div>
                 </div>
 
+                <!-- Git Repositories -->
+                <div class="activities-container settings-form-section">
+                    <h3 class="settings-form-title mb-2">
+                        Git Repositories
+                    </h3>
+                    <p class="section-description mb-3">
+                        Track local git activity (commits, merges, branches). The daemon scans for repositories in common locations and monitors their activity.
+                    </p>
+
+                    <!-- Git Repository List -->
+                    <div id="git-repo-list">
+                        <div class="loading-state">
+                            Loading repositories...
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Database Info -->
                 <div class="activities-container settings-form-section">
                     <h3 class="settings-form-title">
@@ -409,5 +426,174 @@
 
         // Load calendars on page load
         loadCalendars();
+
+        // ===================================
+        // Git Repository Management
+        // ===================================
+
+        let gitRepos = [];
+
+        // Load git repositories
+        async function loadGitRepos() {
+            try {
+                const response = await fetch('/api/git-repositories');
+                gitRepos = await response.json();
+                renderGitRepos();
+            } catch (error) {
+                console.error('Error loading git repositories:', error);
+                document.getElementById('git-repo-list').innerHTML = `
+                    <div style="text-align: center; padding: 40px; color: var(--color-warm-gray); font-style: italic;">
+                        Failed to load git repositories
+                    </div>
+                `;
+            }
+        }
+
+        // Render git repositories
+        function renderGitRepos() {
+            const container = document.getElementById('git-repo-list');
+
+            if (gitRepos.length === 0) {
+                container.innerHTML = `
+                    <div style="text-align: center; padding: 40px; color: var(--color-warm-gray); font-style: italic;">
+                        No git repositories found yet. The daemon will scan for repositories on next check.
+                    </div>
+                `;
+                return;
+            }
+
+            const html = gitRepos.map(repo => `
+                <div class="calendar-card" style="position: relative;">
+                    <div style="display: flex; justify-content: space-between; align-items: start;">
+                        <div style="flex: 1;">
+                            <h4 class="calendar-card-title" style="margin-bottom: 8px;">
+                                ${repo.repo_name}
+                                ${repo.project_name ? `<span style="color: ${repo.project_color}; font-size: 0.85rem; font-weight: normal;"> → ${repo.project_name}</span>` : ''}
+                            </h4>
+                            <p style="color: var(--color-warm-gray); font-size: 0.85rem; margin-bottom: 12px; font-family: monospace;">
+                                ${repo.repo_path}
+                            </p>
+                            <div style="display: flex; gap: 12px; margin-bottom: 8px;">
+                                <label style="display: flex; align-items: center; font-size: 0.9rem;">
+                                    <input type="checkbox"
+                                           ${repo.is_active ? 'checked' : ''}
+                                           onchange="toggleRepo(${repo.id})"
+                                           style="margin-right: 6px;">
+                                    Active
+                                </label>
+                                <select onchange="assignRepoToProject(${repo.id}, this.value)"
+                                        style="padding: 4px 8px; border-radius: 4px; border: 1px solid var(--color-border); background: var(--color-bg); color: var(--color-text); font-size: 0.85rem;">
+                                    <option value="">No Project</option>
+                                    ${projects.map(p => `
+                                        <option value="${p.id}" ${repo.project_id === p.id ? 'selected' : ''}>
+                                            ${p.name}
+                                        </option>
+                                    `).join('')}
+                                </select>
+                            </div>
+                            ${repo.last_scanned ? `
+                                <p style="color: var(--color-warm-gray); font-size: 0.75rem;">
+                                    Last scanned: ${new Date(repo.last_scanned).toLocaleString()}
+                                </p>
+                            ` : ''}
+                        </div>
+                        <button onclick="deleteRepo(${repo.id})"
+                                style="background: none; border: none; color: var(--color-warm-gray); cursor: pointer; padding: 8px; font-size: 1.2rem; line-height: 1;"
+                                title="Remove repository">
+                            ×
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+
+            container.innerHTML = html;
+        }
+
+        // Toggle repository active/inactive
+        async function toggleRepo(id) {
+            const repo = gitRepos.find(r => r.id === id);
+            if (!repo) return;
+
+            try {
+                const response = await fetch(`/api/git-repositories/${id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        is_active: !repo.is_active
+                    })
+                });
+
+                if (response.ok) {
+                    await loadGitRepos();
+                } else {
+                    alert('Failed to update repository');
+                }
+            } catch (error) {
+                console.error('Error toggling repository:', error);
+                alert('Failed to update repository');
+            }
+        }
+
+        // Assign repository to project
+        async function assignRepoToProject(repoId, projectId) {
+            try {
+                const response = await fetch(`/api/git-repositories/${repoId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        project_id: projectId === '' ? null : parseInt(projectId, 10)
+                    })
+                });
+
+                if (response.ok) {
+                    await loadGitRepos();
+                } else {
+                    alert('Failed to assign repository to project');
+                }
+            } catch (error) {
+                console.error('Error assigning repository:', error);
+                alert('Failed to assign repository to project');
+            }
+        }
+
+        // Delete repository
+        async function deleteRepo(id) {
+            if (!confirm('Are you sure you want to stop tracking this repository?')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/git-repositories/${id}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    await loadGitRepos();
+                } else {
+                    alert('Failed to remove repository');
+                }
+            } catch (error) {
+                console.error('Error deleting repository:', error);
+                alert('Failed to remove repository');
+            }
+        }
+
+        // Load git repos on page load (and load projects for dropdown)
+        let projects = [];
+        async function loadProjects() {
+            try {
+                const response = await fetch('/api/projects');
+                projects = await response.json();
+                loadGitRepos();
+            } catch (error) {
+                console.error('Error loading projects:', error);
+                loadGitRepos(); // Still load repos even if projects fail
+            }
+        }
+        loadProjects();
     </script>
 {% endblock %}

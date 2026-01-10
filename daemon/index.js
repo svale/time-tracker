@@ -9,6 +9,7 @@
 const db = require('../database/db');
 const tracker = require('./tracker');
 const icalSync = require('./ical-sync');
+const gitTracker = require('./git-tracker');
 
 /**
  * Start the daemon
@@ -34,6 +35,10 @@ async function startDaemon() {
   // Start tracking
   console.log('Starting browser history tracker...');
   tracker.startTracking();
+
+  // Start git activity tracking
+  console.log('Starting git activity tracker...');
+  gitTracker.startTracking();
 
   // Start calendar sync (every 15 minutes)
   console.log('Starting iCal calendar sync...');
@@ -62,6 +67,7 @@ async function startDaemon() {
 
   console.log('\n✓ Daemon is running!');
   console.log('  - Tracking: Chrome & Safari browser history');
+  console.log('  - Git: Local repository activity tracking');
   console.log('  - Calendar: iCal feed sync every 15 minutes');
   console.log('  - Check interval: Every 5 minutes');
   console.log('  - Database: data/activity.db');
@@ -79,6 +85,9 @@ function shutdown() {
 
   // Stop tracking
   tracker.stopTracking();
+
+  // Stop git tracking
+  gitTracker.stopTracking();
 
   // Stop calendar sync
   if (global.calendarSyncInterval) {
