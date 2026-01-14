@@ -220,13 +220,35 @@
             }
         }
 
+        // Generate a random pleasant color
+        function generateRandomColor() {
+            const colors = [
+                '#3B82F6', // Blue
+                '#10B981', // Emerald
+                '#F59E0B', // Amber
+                '#EF4444', // Red
+                '#8B5CF6', // Violet
+                '#EC4899', // Pink
+                '#06B6D4', // Cyan
+                '#84CC16', // Lime
+                '#F97316', // Orange
+                '#6366F1', // Indigo
+                '#14B8A6', // Teal
+                '#A855F7', // Purple
+                '#0EA5E9', // Sky
+                '#22C55E', // Green
+                '#E11D48', // Rose
+            ];
+            return colors[Math.floor(Math.random() * colors.length)];
+        }
+
         // Open new project modal
         function openNewProjectModal() {
             document.getElementById('modal-title').textContent = 'New Project';
             document.getElementById('project-id').value = '';
             document.getElementById('project-name').value = '';
             document.getElementById('project-description').value = '';
-            document.getElementById('project-color').value = '#3B82F6';
+            document.getElementById('project-color').value = generateRandomColor();
             document.getElementById('project-modal').classList.add('active');
         }
 

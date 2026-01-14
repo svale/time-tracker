@@ -173,6 +173,36 @@
                     </ul>
                 </div>
             </section>
+
+    <!-- Create Project Modal -->
+    <div id="create-project-modal" class="modal-overlay">
+        <div class="modal">
+            <h3 class="modal-title">Create Project from Repository</h3>
+            <form id="create-project-form">
+                <input type="hidden" id="create-project-repo-id" value="">
+
+                <div class="form-group">
+                    <label class="form-label" for="create-project-name">Project Name</label>
+                    <input type="text" id="create-project-name" class="form-input" required placeholder="e.g., Work, Personal, Learning">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="create-project-description">Description (optional)</label>
+                    <input type="text" id="create-project-description" class="form-input" placeholder="Brief description of this project">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="create-project-color">Color</label>
+                    <input type="color" id="create-project-color" class="form-input color-input" value="#3B82F6">
+                </div>
+
+                <div class="form-actions">
+                    <button type="button" class="btn" onclick="closeCreateProjectModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Create Project</button>
+                </div>
+            </form>
+        </div>
+    </div>
 {% endblock %}
 
 {% block scripts %}
@@ -492,7 +522,7 @@
                             <p style="color: var(--color-warm-gray); font-size: 0.85rem; margin-bottom: 12px; font-family: monospace;">
                                 ${repo.repo_path}
                             </p>
-                            <div style="display: flex; gap: 12px; margin-bottom: 8px;">
+                            <div style="display: flex; gap: 12px; margin-bottom: 8px; flex-wrap: wrap; align-items: center;">
                                 <label style="display: flex; align-items: center; font-size: 0.9rem;">
                                     <input type="checkbox"
                                            ${repo.is_active ? 'checked' : ''}
@@ -509,6 +539,11 @@
                                         </option>
                                     `).join('')}
                                 </select>
+                                <button onclick="openCreateProjectModal(${repo.id}, '${repo.repo_name.replace(/'/g, "\\'")}')"
+                                        class="btn btn-primary"
+                                        style="padding: 4px 12px; font-size: 0.8rem;">
+                                    + Create Project
+                                </button>
                             </div>
                             ${repo.last_scanned ? `
                                 <p style="color: var(--color-warm-gray); font-size: 0.75rem;">
@@ -614,5 +649,114 @@
             }
         }
         loadProjects();
+
+        // ===================================
+        // Create Project from Repo Modal
+        // ===================================
+
+        // Generate a random pleasant color
+        function generateRandomColor() {
+            const colors = [
+                '#3B82F6', // Blue
+                '#10B981', // Emerald
+                '#F59E0B', // Amber
+                '#EF4444', // Red
+                '#8B5CF6', // Violet
+                '#EC4899', // Pink
+                '#06B6D4', // Cyan
+                '#84CC16', // Lime
+                '#F97316', // Orange
+                '#6366F1', // Indigo
+                '#14B8A6', // Teal
+                '#A855F7', // Purple
+                '#0EA5E9', // Sky
+                '#22C55E', // Green
+                '#E11D48', // Rose
+            ];
+            return colors[Math.floor(Math.random() * colors.length)];
+        }
+
+        // Open the create project modal
+        function openCreateProjectModal(repoId, repoName) {
+            document.getElementById('create-project-repo-id').value = repoId;
+            document.getElementById('create-project-name').value = repoName;
+            document.getElementById('create-project-description').value = '';
+            document.getElementById('create-project-color').value = generateRandomColor();
+            document.getElementById('create-project-modal').classList.add('active');
+        }
+
+        // Close the create project modal
+        function closeCreateProjectModal() {
+            document.getElementById('create-project-modal').classList.remove('active');
+        }
+
+        // Handle create project form submission
+        document.getElementById('create-project-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const repoId = document.getElementById('create-project-repo-id').value;
+            const name = document.getElementById('create-project-name').value.trim();
+            const description = document.getElementById('create-project-description').value.trim();
+            const color = document.getElementById('create-project-color').value;
+
+            if (!name) {
+                alert('Please enter a project name');
+                return;
+            }
+
+            try {
+                // Create the project
+                const createResponse = await fetch('/api/projects', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name,
+                        description: description || null,
+                        color
+                    })
+                });
+
+                if (!createResponse.ok) {
+                    const error = await createResponse.json();
+                    alert(error.error || 'Failed to create project');
+                    return;
+                }
+
+                const newProject = await createResponse.json();
+
+                // Link the repo to the new project
+                const linkResponse = await fetch(`/api/git-repositories/${repoId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        project_id: newProject.id
+                    })
+                });
+
+                if (!linkResponse.ok) {
+                    alert('Project created but failed to link to repository');
+                }
+
+                closeCreateProjectModal();
+                await loadProjects(); // Reload projects and repos
+            } catch (error) {
+                console.error('Error creating project:', error);
+                alert('Failed to create project');
+            }
+        });
+
+        // Close modal on escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeCreateProjectModal();
+            }
+        });
+
+        // Close modal when clicking overlay
+        document.getElementById('create-project-modal').addEventListener('click', (e) => {
+            if (e.target.id === 'create-project-modal') {
+                closeCreateProjectModal();
+            }
+        });
     </script>
 {% endblock %}

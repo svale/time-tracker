@@ -7,560 +7,577 @@
 {% endblock %}
 
 {% block content %}
-            <!-- Current time display -->
-            <div class="time-display" id="current-time-display">
-                <div class="time-label">Current Time</div>
-                <div class="time-value" id="current-time"></div>
-                <div class="date-value" id="current-date"></div>
+            <!-- Date Navigation -->
+            <nav class="date-nav" id="date-nav">
+                <button class="date-nav-arrow" id="prev-day" title="Previous day">&larr;</button>
+                <button class="date-nav-arrow" id="next-day" title="Next day">&rarr;</button>
+                <div class="date-nav-tabs" id="date-tabs">
+                    <!-- Populated by JavaScript -->
+                </div>
+                <button class="date-nav-today" id="today-btn">Today</button>
+                <input type="date" class="date-nav-picker" id="date-picker" title="Jump to date">
+            </nav>
+
+            <!-- Workday Summary Bar -->
+            <div class="workday-bar" id="workday-bar">
+                <span class="workday-times" id="workday-times">—</span>
+                <span class="workday-separator">&bull;</span>
+                <span class="workday-total" id="workday-total">Loading...</span>
             </div>
 
-            <!-- Project Filter -->
-            <div class="filter-section">
-                <label for="project-filter">Filter by Project:</label>
-                <select id="project-filter" onchange="applyProjectFilter()">
-                    <option value="">All Projects</option>
-                </select>
-            </div>
-
-            <!-- Decorative separator -->
-            <div class="section-separator">
-                <span class="separator-ornament">◆</span>
-            </div>
-
-            <!-- Workday Summary section -->
-            <section class="summary-section">
-                <h2 class="section-title">Today's Workday</h2>
-                <div id="workday-summary">
+            <!-- Project Breakdown -->
+            <section class="project-breakdown-section">
+                <div id="project-breakdown">
                     <div class="loading-state">
                         <div class="loading-spinner"></div>
-                        <p>Calculating workday...</p>
+                        <p>Loading projects...</p>
                     </div>
                 </div>
             </section>
 
             <!-- Timeline visualization -->
             <section class="timeline-section">
-                <div class="section-header">
-                    <h2 class="section-title">Hourly Distribution</h2>
-                    <p class="section-description">Your activity pattern throughout the day</p>
-                </div>
+                <h2 class="section-title-small">Hourly Timeline</h2>
                 <div class="chart-container">
                     <canvas id="timeline-chart"></canvas>
                 </div>
             </section>
 
-            <!-- Activities list -->
-            <section class="activities-section">
-                <div class="section-header">
-                    <h2 class="section-title">Domain Activity Log</h2>
-                    <p class="section-description">Tracked sessions from your browser history</p>
+            <!-- Detail Tabs -->
+            <section class="detail-tabs-section">
+                <div class="detail-tabs">
+                    <button class="detail-tab active" data-tab="calendar">Calendar Events</button>
+                    <button class="detail-tab" data-tab="git">Git Activity</button>
+                    <button class="detail-tab" data-tab="domains">Domain List</button>
                 </div>
-                <div class="activities-container" id="activities-table">
-                    <div class="loading-state">
-                        <div class="loading-spinner"></div>
-                        <p>Loading activity log...</p>
-                    </div>
-                </div>
-            </section>
 
-            <!-- Calendar Events -->
-            <section class="activities-section mt-4">
-                <div class="section-header">
-                    <h2 class="section-title">Calendar Events</h2>
-                    <p class="section-description">Scheduled meetings and events from your calendar feeds</p>
-                </div>
-                <div class="activities-container" id="calendar-events">
+                <!-- Calendar Events Tab -->
+                <div class="detail-content" id="tab-calendar">
                     <div class="loading-state">
                         <div class="loading-spinner"></div>
                         <p>Loading calendar events...</p>
                     </div>
                 </div>
-            </section>
 
-            <!-- Git Activity -->
-            <section class="activities-section mt-4">
-                <div class="section-header">
-                    <h2 class="section-title">Git Activity</h2>
-                    <p class="section-description">Local repository commits, merges, and branches</p>
-                </div>
-                <div class="activities-container" id="git-activity">
+                <!-- Git Activity Tab -->
+                <div class="detail-content hidden" id="tab-git">
                     <div class="loading-state">
                         <div class="loading-spinner"></div>
                         <p>Loading git activity...</p>
+                    </div>
+                </div>
+
+                <!-- Domain List Tab -->
+                <div class="detail-content hidden" id="tab-domains">
+                    <div class="loading-state">
+                        <div class="loading-spinner"></div>
+                        <p>Loading domains...</p>
                     </div>
                 </div>
             </section>
 {% endblock %}
 
 {% block scripts %}
-    <script src="/js/app.js"></script>
     <script>
-        let currentProjectFilter = '';
+        // ===================================
+        // State
+        // ===================================
+        let currentDate = new Date();
+        let windowStartDate = new Date(); // Start of the 7-day window
+        let timelineChart = null;
 
-        // Update current time display
-        function updateCurrentTime() {
-            const now = new Date();
-            const timeStr = now.toLocaleTimeString('en-US', {
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-                hour12: false
-            });
-            const dateStr = now.toLocaleDateString('en-US', {
-                weekday: 'long',
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric'
-            });
+        // ===================================
+        // Date Navigation
+        // ===================================
 
-            const timeEl = document.getElementById('current-time');
-            const dateEl = document.getElementById('current-date');
-
-            if (timeEl) timeEl.textContent = timeStr;
-            if (dateEl) dateEl.textContent = dateStr;
+        function getDateString(date) {
+            return date.toISOString().split('T')[0];
         }
 
-        // Update time every second
-        updateCurrentTime();
-        setInterval(updateCurrentTime, 1000);
+        function isToday(date) {
+            const today = new Date();
+            return date.toDateString() === today.toDateString();
+        }
 
-        // Load projects for filter dropdown
-        async function loadProjects() {
-            try {
-                const response = await fetch('/api/projects');
-                const projects = await response.json();
+        function isYesterday(date) {
+            const yesterday = new Date();
+            yesterday.setDate(yesterday.getDate() - 1);
+            return date.toDateString() === yesterday.toDateString();
+        }
 
-                const filterSelect = document.getElementById('project-filter');
-                projects.forEach(project => {
-                    const option = document.createElement('option');
-                    option.value = project.id;
-                    option.textContent = project.name;
-                    filterSelect.appendChild(option);
-                });
-            } catch (error) {
-                console.error('Error loading projects:', error);
+        function getWindowDays() {
+            const days = [];
+            const start = new Date(windowStartDate);
+            for (let i = 0; i < 7; i++) {
+                const day = new Date(start);
+                day.setDate(start.getDate() + i);
+                days.push(day);
             }
+            return days;
         }
 
-        // Apply project filter
-        function applyProjectFilter() {
-            currentProjectFilter = document.getElementById('project-filter').value;
+        function renderDateTabs() {
+            const container = document.getElementById('date-tabs');
+            const days = getWindowDays();
+            const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-            // Reload data with new filter
-            loadWorkdaySummary();
-            loadDailyReport();
-            loadCalendarEvents();
-            loadGitActivity();
-        }
+            let html = '';
+            days.forEach((day) => {
+                const dateStr = getDateString(day);
+                const isActive = dateStr === getDateString(currentDate);
+                const isTodayDate = isToday(day);
+                const isYesterdayDate = isYesterday(day);
 
-        // Load workday summary
-        async function loadWorkdaySummary() {
-            const container = document.getElementById('workday-summary');
-
-            try {
-                const response = await fetch('/api/workday-stats');
-                const data = await response.json();
-                renderWorkdaySummary(container, data);
-
-                // Update timeline chart
-                if (typeof updateTimelineChart === 'function') {
-                    updateTimelineChart(currentProjectFilter);
+                let label;
+                if (isTodayDate) {
+                    label = 'Today';
+                } else if (isYesterdayDate) {
+                    label = 'Yesterday';
+                } else {
+                    const dayName = dayNames[day.getDay()];
+                    const dayNum = day.getDate();
+                    const month = day.getMonth() + 1;
+                    label = `${dayName} ${dayNum}/${month}`;
                 }
-            } catch (error) {
-                console.error('Error loading workday summary:', error);
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-ornament">◇</div>
-                        <p class="empty-message">Failed to load workday summary.</p>
-                    </div>
+
+                const isFuture = day > new Date();
+
+                html += `
+                    <button class="date-tab ${isActive ? 'active' : ''} ${isFuture ? 'future' : ''}"
+                            data-date="${dateStr}"
+                            ${isFuture ? 'disabled' : ''}>
+                        ${label}
+                    </button>
                 `;
-            }
-        }
-
-        function renderWorkdaySummary(container, data) {
-            if (!data.has_sufficient_data) {
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-ornament">◇</div>
-                        <p class="empty-message">Not enough activity recorded yet.</p>
-                        <p class="empty-hint">Browser history is checked every 5 minutes. Significant activity (>5 min) needed.</p>
-                    </div>
-                `;
-                return;
-            }
-
-            // Workday header stats
-            let html = `
-                <div class="workday-header">
-                    <div class="workday-stat">
-                        <div class="workday-stat-value">${data.workday_start_formatted || '—'}</div>
-                        <div class="workday-stat-label">Started</div>
-                    </div>
-                    <div class="workday-stat">
-                        <div class="workday-stat-value">${data.workday_end_formatted || '—'}</div>
-                        <div class="workday-stat-label">Ended</div>
-                    </div>
-                    <div class="workday-stat">
-                        <div class="workday-stat-value">${data.total_time}</div>
-                        <div class="workday-stat-label">Total Active</div>
-                    </div>
-                </div>
-            `;
-
-            // Timeline visualization
-            if (data.timeline_slots && data.timeline_slots.length > 0) {
-                html += `<div class="workday-timeline">`;
-                html += `<div class="timeline-slots">`;
-
-                data.timeline_slots.forEach((slot, index) => {
-                    const showLabel = index === 0 || index === data.timeline_slots.length - 1 || index % 2 === 0;
-                    let barStyle = 'background: var(--color-cream);';
-
-                    if (slot.activities && slot.activities.length > 0) {
-                        // Use the dominant project color or mix
-                        const totalFill = slot.activities.reduce((sum, a) => sum + a.fill_percent, 0);
-                        const dominantActivity = slot.activities.reduce((prev, curr) =>
-                            (prev.fill_percent > curr.fill_percent) ? prev : curr
-                        );
-                        const color = dominantActivity.project_color || '#9CA3AF';
-                        const opacity = Math.min(totalFill / 100, 1);
-                        barStyle = `background: ${color}; opacity: ${0.4 + (opacity * 0.6)};`;
-                    }
-
-                    html += `
-                        <div class="timeline-slot">
-                            <div class="timeline-slot-bar" style="${barStyle}" title="${slot.time}"></div>
-                            ${showLabel ? `<div class="timeline-slot-label">${slot.time}</div>` : '<div class="timeline-slot-label"></div>'}
-                        </div>
-                    `;
-                });
-
-                html += `</div></div>`;
-            }
-
-            // Project breakdown
-            if (data.project_breakdown && data.project_breakdown.length > 0) {
-                html += `<div class="project-breakdown">`;
-                data.project_breakdown.forEach(project => {
-                    const hours = Math.floor(project.seconds / 3600);
-                    const minutes = Math.floor((project.seconds % 3600) / 60);
-                    const timeStr = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
-
-                    html += `
-                        <div class="project-chip">
-                            <div class="project-chip-color" style="background: ${project.project_color};"></div>
-                            <span>${escapeHtml(project.project_name)}</span>
-                            <span style="color: var(--color-warm-gray); font-family: var(--font-mono); font-size: 0.8rem;">${timeStr}</span>
-                        </div>
-                    `;
-                });
-                html += `</div>`;
-            }
+            });
 
             container.innerHTML = html;
-        }
 
-        // Load daily report
-        async function loadDailyReport() {
-            const container = document.getElementById('activities-table');
-            const url = currentProjectFilter
-                ? `/api/daily-report?project_id=${currentProjectFilter}`
-                : '/api/daily-report';
-
-            try {
-                const response = await fetch(url);
-                const data = await response.json();
-
-                if (data.activities.length === 0) {
-                    container.innerHTML = `
-                        <div class="empty-state">
-                            <div class="empty-ornament">◇</div>
-                            <p class="empty-message">No activity recorded yet today.</p>
-                            <p class="empty-hint">Browser history is checked every 5 minutes.</p>
-                        </div>
-                    `;
-                    return;
-                }
-
-                let html = '<div class="activities-list">';
-
-                data.activities.forEach((activity, index) => {
-                    const displayName = activity.domain || activity.app_name;
-                    const browserName = activity.app_name;
-                    const animationDelay = index * 0.05;
-
-                    // Project badge HTML
-                    let projectBadge = '';
-                    if (activity.project_name && activity.project_color) {
-                        projectBadge = `
-                            <span class="project-badge" style="background-color: ${activity.project_color};">
-                                ${escapeHtml(activity.project_name)}
-                            </span>
-                        `;
-                    }
-
-                    // Page title HTML (take first title if multiple, truncate if too long)
-                    let pageTitleHtml = '';
-                    if (activity.page_titles) {
-                        const firstTitle = activity.page_titles.split(',')[0].trim();
-                        const truncatedTitle = truncate(firstTitle, 60);
-                        pageTitleHtml = `<div class="activity-title" title="${escapeHtml(firstTitle)}">${escapeHtml(truncatedTitle)}</div>`;
-                    }
-
-                    html += `
-                        <div class="activity-entry" style="animation-delay: ${animationDelay}s">
-                            <div class="activity-main">
-                                <div class="activity-domain">
-                                    ${escapeHtml(displayName)}
-                                    ${projectBadge}
-                                </div>
-                                ${pageTitleHtml}
-                                <div class="activity-browser">${escapeHtml(browserName)}</div>
-                            </div>
-                            <div class="activity-stats">
-                                <div class="activity-time">${activity.time}</div>
-                                <div class="activity-sessions">${activity.session_count} session${activity.session_count !== 1 ? 's' : ''}</div>
-                            </div>
-                            <div class="activity-bar">
-                                <div class="activity-bar-fill" style="width: ${activity.percentage}%"></div>
-                                <div class="activity-percentage">${activity.percentage}%</div>
-                            </div>
-                        </div>
-                    `;
+            // Add click handlers
+            container.querySelectorAll('.date-tab:not([disabled])').forEach(tab => {
+                tab.addEventListener('click', () => {
+                    currentDate = new Date(tab.dataset.date + 'T00:00:00');
+                    renderDateTabs();
+                    loadAllData();
                 });
-
-                html += '</div>';
-                container.innerHTML = html;
-            } catch (error) {
-                console.error('Error loading daily report:', error);
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-ornament">◇</div>
-                        <p class="empty-message">Failed to load activity report.</p>
-                    </div>
-                `;
-            }
+            });
         }
 
-        // Truncate text to max length
+        document.getElementById('prev-day').addEventListener('click', () => {
+            windowStartDate.setDate(windowStartDate.getDate() - 1);
+            renderDateTabs();
+        });
+
+        document.getElementById('next-day').addEventListener('click', () => {
+            const today = new Date();
+            const windowEnd = new Date(windowStartDate);
+            windowEnd.setDate(windowEnd.getDate() + 6);
+
+            // Only allow if window end is before today
+            if (windowEnd < today) {
+                windowStartDate.setDate(windowStartDate.getDate() + 1);
+                renderDateTabs();
+            }
+        });
+
+        document.getElementById('today-btn').addEventListener('click', () => {
+            currentDate = new Date();
+            // Reset window to show today
+            windowStartDate = new Date();
+            windowStartDate.setDate(windowStartDate.getDate() - 6); // Today at end of window
+            renderDateTabs();
+            loadAllData();
+        });
+
+        document.getElementById('date-picker').addEventListener('change', (e) => {
+            const selectedDate = new Date(e.target.value + 'T00:00:00');
+            const today = new Date();
+
+            if (selectedDate <= today) {
+                currentDate = selectedDate;
+                // Center window around selected date
+                windowStartDate = new Date(selectedDate);
+                windowStartDate.setDate(windowStartDate.getDate() - 3);
+                renderDateTabs();
+                loadAllData();
+            }
+        });
+
+        // ===================================
+        // Tab Switching
+        // ===================================
+
+        document.querySelectorAll('.detail-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                // Update active tab
+                document.querySelectorAll('.detail-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+
+                // Show/hide content
+                document.querySelectorAll('.detail-content').forEach(content => {
+                    content.classList.add('hidden');
+                });
+                document.getElementById(`tab-${tab.dataset.tab}`).classList.remove('hidden');
+            });
+        });
+
+        // ===================================
+        // Helper Functions
+        // ===================================
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
         function truncate(text, maxLength) {
             if (!text) return '';
             if (text.length <= maxLength) return text;
             return text.substring(0, maxLength) + '...';
         }
 
-        // Escape HTML to prevent XSS
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
+        // ===================================
+        // Workday Summary Bar
+        // ===================================
+
+        async function loadWorkdaySummary() {
+            const dateStr = getDateString(currentDate);
+            try {
+                const response = await fetch(`/api/workday-stats?date=${dateStr}`);
+                const data = await response.json();
+
+                const timesEl = document.getElementById('workday-times');
+                const totalEl = document.getElementById('workday-total');
+
+                if (data.has_sufficient_data) {
+                    timesEl.textContent = `${data.workday_start_formatted} - ${data.workday_end_formatted}`;
+                    totalEl.textContent = `${data.total_time} total`;
+                } else {
+                    timesEl.textContent = 'No activity';
+                    totalEl.textContent = '0m';
+                }
+            } catch (error) {
+                console.error('Error loading workday summary:', error);
+            }
         }
 
         // ===================================
-        // Calendar Events Display
+        // Project Breakdown
+        // ===================================
+
+        async function loadProjectBreakdown() {
+            const container = document.getElementById('project-breakdown');
+            const dateStr = getDateString(currentDate);
+
+            try {
+                const response = await fetch(`/api/project-summary?date=${dateStr}`);
+                const data = await response.json();
+
+                if (data.projects.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <p class="empty-message">No activity recorded for this day.</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                let html = '';
+                data.projects.forEach(project => {
+                    // Build domain list
+                    const domainList = project.domains.slice(0, 3)
+                        .map(d => `${escapeHtml(d.domain)} (${d.time})`)
+                        .join(', ');
+
+                    // Build calendar list
+                    const calendarList = project.calendar_events.slice(0, 2)
+                        .map(e => `${escapeHtml(truncate(e.title, 30))} (${e.duration})`)
+                        .join(', ');
+
+                    html += `
+                        <div class="project-card">
+                            <div class="project-header">
+                                <div class="project-name-row">
+                                    <span class="project-color-dot" style="background: ${project.project_color}"></span>
+                                    <span class="project-name">${escapeHtml(project.project_name)}</span>
+                                </div>
+                                <span class="project-time">${project.total_time}</span>
+                            </div>
+                            <div class="project-bar-container">
+                                <div class="project-bar" style="width: ${project.percentage}%; background: ${project.project_color}"></div>
+                            </div>
+                            <div class="project-details">
+                                ${domainList ? `<div class="detail-row"><span class="detail-icon">📄</span> ${domainList}</div>` : ''}
+                                ${calendarList ? `<div class="detail-row"><span class="detail-icon">📅</span> ${calendarList}</div>` : ''}
+                                ${project.git_commits > 0 ? `<div class="detail-row"><span class="detail-icon">💾</span> ${project.git_commits} commit${project.git_commits !== 1 ? 's' : ''}</div>` : ''}
+                            </div>
+                        </div>
+                    `;
+                });
+
+                container.innerHTML = html;
+            } catch (error) {
+                console.error('Error loading project breakdown:', error);
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <p class="empty-message">Failed to load projects.</p>
+                    </div>
+                `;
+            }
+        }
+
+        // ===================================
+        // Stacked Timeline Chart
+        // ===================================
+
+        async function loadTimelineChart() {
+            const ctx = document.getElementById('timeline-chart').getContext('2d');
+            const dateStr = getDateString(currentDate);
+
+            try {
+                const response = await fetch(`/api/timeline?date=${dateStr}`);
+                const data = await response.json();
+
+                // Build datasets per project
+                const projectDatasets = {};
+                data.timeline.forEach((hour, hourIndex) => {
+                    if (hour.by_project) {
+                        hour.by_project.forEach(p => {
+                            const key = p.project_id || 'unassigned';
+                            if (!projectDatasets[key]) {
+                                projectDatasets[key] = {
+                                    label: p.project_name,
+                                    data: Array(24).fill(0),
+                                    backgroundColor: p.project_color,
+                                    borderRadius: 2
+                                };
+                            }
+                            projectDatasets[key].data[hourIndex] = Math.round(p.seconds / 60);
+                        });
+                    }
+                });
+
+                const datasets = Object.values(projectDatasets);
+                const labels = data.timeline.map(h => h.hour);
+
+                if (timelineChart) {
+                    timelineChart.destroy();
+                }
+
+                timelineChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels,
+                        datasets
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: {
+                                stacked: true,
+                                grid: { display: false },
+                                ticks: {
+                                    maxRotation: 0,
+                                    callback: function(val, index) {
+                                        return index % 3 === 0 ? this.getLabelForValue(val) : '';
+                                    }
+                                }
+                            },
+                            y: {
+                                stacked: true,
+                                beginAtZero: true,
+                                title: { display: true, text: 'Minutes' },
+                                grid: { color: 'rgba(0,0,0,0.05)' }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                display: datasets.length > 1,
+                                position: 'bottom',
+                                labels: { boxWidth: 12, padding: 15 }
+                            },
+                            tooltip: {
+                                mode: 'index',
+                                intersect: false
+                            }
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error('Error loading timeline:', error);
+            }
+        }
+
+        // ===================================
+        // Calendar Events Tab
         // ===================================
 
         async function loadCalendarEvents() {
-            const container = document.getElementById('calendar-events');
-            const url = currentProjectFilter
-                ? `/api/calendar-events?project_id=${currentProjectFilter}`
-                : '/api/calendar-events';
+            const container = document.getElementById('tab-calendar');
+            const dateStr = getDateString(currentDate);
 
             try {
-                const response = await fetch(url);
+                const response = await fetch(`/api/calendar-events?date=${dateStr}`);
                 const data = await response.json();
 
                 if (data.events.length === 0) {
                     container.innerHTML = `
                         <div class="empty-state">
-                            <div class="empty-ornament">◇</div>
-                            <p class="empty-message">No calendar events for today.</p>
-                            <p class="empty-hint">Add calendar subscriptions in <a href="/settings" style="color: var(--color-terracotta); text-decoration: underline;">Settings</a></p>
+                            <p class="empty-message">No calendar events for this day.</p>
+                            <p class="empty-hint">Add calendar subscriptions in <a href="/settings">Settings</a></p>
                         </div>
                     `;
                     return;
                 }
 
-                let html = '<div class="activities-list">';
-
-                data.events.forEach((event, index) => {
-                    const animationDelay = index * 0.05;
+                let html = '<div class="detail-list">';
+                data.events.forEach(event => {
                     const startTime = new Date(event.start_time).toLocaleTimeString('en-US', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        hour12: true
+                        hour: '2-digit', minute: '2-digit', hour12: true
                     });
                     const endTime = new Date(event.end_time).toLocaleTimeString('en-US', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        hour12: true
+                        hour: '2-digit', minute: '2-digit', hour12: true
                     });
 
-                    // Project badge HTML
-                    let projectBadge = '';
-                    if (event.project_name && event.project_color) {
-                        projectBadge = `
-                            <span class="project-badge" style="background-color: ${event.project_color};">
-                                ${escapeHtml(event.project_name)}
-                            </span>
-                        `;
-                    }
-
-                    // Event details
-                    let detailsHtml = '';
-                    const details = [];
-                    if (event.location) details.push(`📍 ${event.location}`);
-                    if (event.attendees_count > 0) details.push(`👥 ${event.attendees_count} attendee${event.attendees_count !== 1 ? 's' : ''}`);
-                    if (details.length > 0) {
-                        detailsHtml = `<div class="activity-title">${escapeHtml(details.join(' • '))}</div>`;
-                    }
-
                     html += `
-                        <div class="activity-entry" style="animation-delay: ${animationDelay}s; background: linear-gradient(to right, var(--color-cream) 0%, var(--color-cream) 4px, var(--color-parchment) 4px, var(--color-parchment) 100%);">
-                            <div class="activity-main">
-                                <div class="activity-domain">
-                                    📅 ${escapeHtml(event.title)}
-                                    ${projectBadge}
-                                </div>
-                                ${detailsHtml}
-                                <div class="activity-browser">${startTime} - ${endTime}</div>
+                        <div class="detail-item">
+                            <div class="detail-item-main">
+                                <span class="detail-item-title">📅 ${escapeHtml(event.title)}</span>
+                                ${event.project_name ? `<span class="project-badge" style="background: ${event.project_color}">${escapeHtml(event.project_name)}</span>` : ''}
                             </div>
-                            <div class="activity-stats">
-                                <div class="activity-time">${event.duration}</div>
-                                <div class="activity-sessions">${event.is_all_day ? 'All day' : 'Event'}</div>
-                            </div>
+                            <div class="detail-item-meta">${startTime} - ${endTime} (${event.duration})</div>
                         </div>
                     `;
                 });
-
                 html += '</div>';
                 container.innerHTML = html;
             } catch (error) {
                 console.error('Error loading calendar events:', error);
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-ornament">◇</div>
-                        <p class="empty-message">Failed to load calendar events.</p>
-                    </div>
-                `;
             }
         }
 
         // ===================================
-        // Git Activity Display
+        // Git Activity Tab
         // ===================================
 
         async function loadGitActivity() {
-            const container = document.getElementById('git-activity');
-            const url = currentProjectFilter
-                ? `/api/git-activity?project_id=${currentProjectFilter}`
-                : '/api/git-activity';
+            const container = document.getElementById('tab-git');
+            const dateStr = getDateString(currentDate);
 
             try {
-                const response = await fetch(url);
+                const response = await fetch(`/api/git-activity?date=${dateStr}`);
                 const data = await response.json();
 
                 if (data.activities.length === 0) {
                     container.innerHTML = `
                         <div class="empty-state">
-                            <div class="empty-ornament">◇</div>
-                            <p class="empty-message">No git activity for today.</p>
-                            <p class="empty-hint">The daemon scans for repositories in common locations automatically.</p>
+                            <p class="empty-message">No git activity for this day.</p>
                         </div>
                     `;
                     return;
                 }
 
-                let html = '<div class="activities-list">';
-
-                data.activities.forEach((activity, index) => {
-                    const animationDelay = index * 0.05;
-                    const timestamp = new Date(activity.timestamp).toLocaleTimeString('en-US', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        hour12: true
+                const icons = { commit: '💾', merge: '🔀', branch: '🌿' };
+                let html = '<div class="detail-list">';
+                data.activities.forEach(activity => {
+                    const time = new Date(activity.timestamp).toLocaleTimeString('en-US', {
+                        hour: '2-digit', minute: '2-digit', hour12: true
                     });
-
-                    // Action icon
-                    const actionIcons = {
-                        'commit': '💾',
-                        'merge': '🔀',
-                        'branch': '🌿',
-                        'pull': '⬇️',
-                        'rebase': '⚙️',
-                        'cherry-pick': '🍒'
-                    };
-                    const icon = actionIcons[activity.action_type] || '📝';
-
-                    // Project badge HTML
-                    let projectBadge = '';
-                    if (activity.project_name && activity.project_color) {
-                        projectBadge = `
-                            <span class="project-badge" style="background-color: ${activity.project_color};">
-                                ${escapeHtml(activity.project_name)}
-                            </span>
-                        `;
-                    }
-
-                    // Commit message (truncate if too long)
-                    const commitMessage = activity.commit_message || '';
-                    const displayMessage = commitMessage.length > 60
-                        ? commitMessage.substring(0, 60) + '...'
-                        : commitMessage;
+                    const icon = icons[activity.action_type] || '📝';
 
                     html += `
-                        <div class="activity-entry" style="animation-delay: ${animationDelay}s; background: linear-gradient(to right, var(--color-cream) 0%, var(--color-cream) 4px, var(--color-parchment) 4px, var(--color-parchment) 100%);">
-                            <div class="activity-main">
-                                <div class="activity-domain">
-                                    ${icon} ${escapeHtml(activity.repo_name)}
-                                    ${projectBadge}
-                                </div>
-                                ${displayMessage ? `<div class="activity-title">${escapeHtml(displayMessage)}</div>` : ''}
-                                <div class="activity-browser">
-                                    ${activity.branch_name ? `Branch: ${escapeHtml(activity.branch_name)}` : ''}
-                                    ${activity.commit_hash ? ` • ${activity.commit_hash}` : ''}
-                                </div>
+                        <div class="detail-item">
+                            <div class="detail-item-main">
+                                <span class="detail-item-title">${icon} ${escapeHtml(activity.repo_name)}</span>
+                                ${activity.project_name ? `<span class="project-badge" style="background: ${activity.project_color}">${escapeHtml(activity.project_name)}</span>` : ''}
                             </div>
-                            <div class="activity-stats">
-                                <div class="activity-time">${timestamp}</div>
-                                <div class="activity-sessions">${activity.action_type}</div>
+                            <div class="detail-item-meta">
+                                ${activity.commit_message ? escapeHtml(truncate(activity.commit_message, 50)) : activity.action_type}
+                                <span class="detail-item-time">${time}</span>
                             </div>
                         </div>
                     `;
                 });
-
                 html += '</div>';
                 container.innerHTML = html;
             } catch (error) {
                 console.error('Error loading git activity:', error);
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-ornament">◇</div>
-                        <p class="empty-message">Failed to load git activity.</p>
-                    </div>
-                `;
             }
         }
 
-        // Timeline chart is handled by /js/app.js
-
         // ===================================
-        // Initialize on page load
+        // Domain List Tab
         // ===================================
 
-        // Load all data immediately (script is at end of body, DOM is ready)
-        loadProjects();
-        loadWorkdaySummary();
-        loadDailyReport();
-        loadCalendarEvents();
-        loadGitActivity();
+        async function loadDomainList() {
+            const container = document.getElementById('tab-domains');
+            const dateStr = getDateString(currentDate);
 
-        // Refresh data every 60 seconds
-        setInterval(() => {
+            try {
+                const response = await fetch(`/api/daily-report?date=${dateStr}`);
+                const data = await response.json();
+
+                if (data.activities.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <p class="empty-message">No domain activity for this day.</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                let html = '<div class="detail-list">';
+                data.activities.forEach(activity => {
+                    const displayName = activity.domain || activity.app_name;
+
+                    html += `
+                        <div class="detail-item">
+                            <div class="detail-item-main">
+                                <span class="detail-item-title">📄 ${escapeHtml(displayName)}</span>
+                                ${activity.project_name ? `<span class="project-badge" style="background: ${activity.project_color}">${escapeHtml(activity.project_name)}</span>` : ''}
+                            </div>
+                            <div class="detail-item-meta">
+                                ${activity.time} (${activity.session_count} session${activity.session_count !== 1 ? 's' : ''})
+                                <span class="detail-item-percent">${activity.percentage}%</span>
+                            </div>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+                container.innerHTML = html;
+            } catch (error) {
+                console.error('Error loading domain list:', error);
+            }
+        }
+
+        // ===================================
+        // Load All Data
+        // ===================================
+
+        function loadAllData() {
             loadWorkdaySummary();
-            loadDailyReport();
+            loadProjectBreakdown();
+            loadTimelineChart();
             loadCalendarEvents();
             loadGitActivity();
-        }, 60000);
+            loadDomainList();
+        }
+
+        // ===================================
+        // Initialize
+        // ===================================
+
+        // Initialize window to show today at the end
+        windowStartDate = new Date();
+        windowStartDate.setDate(windowStartDate.getDate() - 6);
+
+        renderDateTabs();
+        loadAllData();
+
+        // Refresh data every 60 seconds
+        setInterval(loadAllData, 60000);
     </script>
 {% endblock %}

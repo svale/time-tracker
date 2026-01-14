@@ -19,18 +19,6 @@ router.get('/', (req, res) => {
 });
 
 /**
- * Reports page
- */
-router.get('/reports', (req, res) => {
-  try {
-    res.render('reports', { activePage: 'reports' });
-  } catch (error) {
-    console.error('Error rendering reports:', error);
-    res.status(500).send('<h1>Error loading reports</h1>');
-  }
-});
-
-/**
  * Projects page
  */
 router.get('/projects', (req, res) => {

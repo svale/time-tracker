@@ -319,21 +319,74 @@ router.get('/daily-report', (req, res) => {
 
 /**
  * GET /api/timeline
- * Returns timeline data for charts (hourly breakdown)
+ * Returns timeline data for charts (hourly breakdown with per-project data)
  */
 router.get('/timeline', (req, res) => {
   try {
     const date = req.query.date || getTodayString();
-    const timeline = db.getTimelineData(date);
+    const { sessions, calendarEvents } = db.getWorkdayStats(date);
 
-    // Fill in missing hours with 0
+    // Combine all activities with timestamps
+    const allActivities = [
+      ...sessions.map(s => ({
+        start_time: s.start_time,
+        end_time: s.end_time,
+        duration_seconds: s.duration_seconds,
+        project_id: s.project_id,
+        project_name: s.project_name || 'Unassigned',
+        project_color: s.project_color || '#9CA3AF'
+      })),
+      ...calendarEvents.map(e => ({
+        start_time: e.start_time,
+        end_time: e.end_time,
+        duration_seconds: Math.floor((e.end_time - e.start_time) / 1000),
+        project_id: e.project_id,
+        project_name: e.project_name || 'Unassigned',
+        project_color: e.project_color || '#9CA3AF'
+      }))
+    ];
+
+    // Build hourly breakdown with per-project data
     const hours = Array.from({ length: 24 }, (_, i) => {
-      const hour = i.toString().padStart(2, '0') + ':00';
-      const data = timeline.find(t => t.hour === hour);
+      const hourStr = i.toString().padStart(2, '0') + ':00';
+      const hourStart = new Date(date).setHours(i, 0, 0, 0);
+      const hourEnd = new Date(date).setHours(i, 59, 59, 999);
+
+      // Find activities overlapping this hour
+      const projectSeconds = {};
+      allActivities.forEach(activity => {
+        // Check for overlap
+        if (activity.end_time <= hourStart || activity.start_time >= hourEnd) {
+          return;
+        }
+
+        // Calculate overlap duration
+        const overlapStart = Math.max(activity.start_time, hourStart);
+        const overlapEnd = Math.min(activity.end_time, hourEnd);
+        const overlapSeconds = Math.floor((overlapEnd - overlapStart) / 1000);
+
+        if (overlapSeconds > 0) {
+          const key = activity.project_id || 'unassigned';
+          if (!projectSeconds[key]) {
+            projectSeconds[key] = {
+              project_id: activity.project_id,
+              project_name: activity.project_name,
+              project_color: activity.project_color,
+              seconds: 0
+            };
+          }
+          projectSeconds[key].seconds += overlapSeconds;
+        }
+      });
+
+      const byProject = Object.values(projectSeconds).sort((a, b) => b.seconds - a.seconds);
+      const totalSeconds = byProject.reduce((sum, p) => sum + p.seconds, 0);
+
       return {
-        hour,
-        seconds: data ? (data.total_seconds || 0) : 0,
-        minutes: data ? Math.round((data.total_seconds || 0) / 60) : 0
+        hour: hourStr,
+        seconds: totalSeconds,
+        minutes: Math.round(totalSeconds / 60),
+        by_project: byProject
       };
     });
 
@@ -344,6 +397,124 @@ router.get('/timeline', (req, res) => {
   } catch (error) {
     console.error('Error in /api/timeline:', error);
     res.status(500).json({ error: 'Failed to get timeline' });
+  }
+});
+
+/**
+ * GET /api/project-summary
+ * Returns project breakdown with full detail (domains, calendar, git per project)
+ */
+router.get('/project-summary', (req, res) => {
+  try {
+    const date = req.query.date || getTodayString();
+    const { sessions, calendarEvents } = db.getWorkdayStats(date);
+
+    // Get git activity
+    const startOfDay = new Date(date).setHours(0, 0, 0, 0);
+    const endOfDay = new Date(date).setHours(23, 59, 59, 999);
+    const gitActivities = db.getGitActivity(startOfDay, endOfDay, null);
+
+    // Build project breakdown
+    const projectData = {};
+
+    // Process browser sessions
+    sessions.forEach(s => {
+      const key = s.project_id || 'unassigned';
+      if (!projectData[key]) {
+        projectData[key] = {
+          project_id: s.project_id,
+          project_name: s.project_name || 'Unassigned',
+          project_color: s.project_color || '#9CA3AF',
+          total_seconds: 0,
+          domains: {},
+          calendar_events: [],
+          git_commits: 0
+        };
+      }
+      projectData[key].total_seconds += s.duration_seconds;
+
+      // Aggregate domains
+      if (s.domain) {
+        if (!projectData[key].domains[s.domain]) {
+          projectData[key].domains[s.domain] = 0;
+        }
+        projectData[key].domains[s.domain] += s.duration_seconds;
+      }
+    });
+
+    // Process calendar events
+    calendarEvents.forEach(e => {
+      const key = e.project_id || 'unassigned';
+      if (!projectData[key]) {
+        projectData[key] = {
+          project_id: e.project_id,
+          project_name: e.project_name || 'Unassigned',
+          project_color: e.project_color || '#9CA3AF',
+          total_seconds: 0,
+          domains: {},
+          calendar_events: [],
+          git_commits: 0
+        };
+      }
+      const duration = Math.floor((e.end_time - e.start_time) / 1000);
+      projectData[key].total_seconds += duration;
+      projectData[key].calendar_events.push({
+        title: e.title,
+        duration_seconds: duration,
+        duration: formatDuration(duration)
+      });
+    });
+
+    // Process git activity
+    gitActivities.forEach(g => {
+      const key = g.project_id || 'unassigned';
+      if (!projectData[key]) {
+        projectData[key] = {
+          project_id: g.project_id,
+          project_name: g.project_name || 'Unassigned',
+          project_color: g.project_color || '#9CA3AF',
+          total_seconds: 0,
+          domains: {},
+          calendar_events: [],
+          git_commits: 0
+        };
+      }
+      if (g.action_type === 'commit') {
+        projectData[key].git_commits++;
+      }
+    });
+
+    // Convert to array and format
+    const projects = Object.values(projectData)
+      .map(p => ({
+        project_id: p.project_id,
+        project_name: p.project_name,
+        project_color: p.project_color,
+        total_seconds: p.total_seconds,
+        total_time: formatDuration(p.total_seconds),
+        domains: Object.entries(p.domains)
+          .map(([domain, seconds]) => ({ domain, seconds, time: formatDuration(seconds) }))
+          .sort((a, b) => b.seconds - a.seconds),
+        calendar_events: p.calendar_events,
+        git_commits: p.git_commits
+      }))
+      .sort((a, b) => b.total_seconds - a.total_seconds);
+
+    // Calculate total for percentages
+    const totalSeconds = projects.reduce((sum, p) => sum + p.total_seconds, 0);
+
+    res.json({
+      date,
+      total_seconds: totalSeconds,
+      total_time: formatDuration(totalSeconds),
+      projects: projects.map(p => ({
+        ...p,
+        percentage: totalSeconds > 0 ? Math.round((p.total_seconds / totalSeconds) * 100) : 0
+      }))
+    });
+  } catch (error) {
+    console.error('Error in /api/project-summary:', error);
+    res.status(500).json({ error: 'Failed to get project summary' });
   }
 });
 
