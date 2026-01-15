@@ -91,18 +91,16 @@
         // ===================================
 
         function getDateString(date) {
-            return date.toISOString().split('T')[0];
+            // Use local date components to avoid timezone issues
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
         }
 
         function isToday(date) {
             const today = new Date();
             return date.toDateString() === today.toDateString();
-        }
-
-        function isYesterday(date) {
-            const yesterday = new Date();
-            yesterday.setDate(yesterday.getDate() - 1);
-            return date.toDateString() === yesterday.toDateString();
         }
 
         function getWindowDays() {
@@ -125,20 +123,12 @@
             days.forEach((day) => {
                 const dateStr = getDateString(day);
                 const isActive = dateStr === getDateString(currentDate);
-                const isTodayDate = isToday(day);
-                const isYesterdayDate = isYesterday(day);
 
-                let label;
-                if (isTodayDate) {
-                    label = 'Today';
-                } else if (isYesterdayDate) {
-                    label = 'Yesterday';
-                } else {
-                    const dayName = dayNames[day.getDay()];
-                    const dayNum = day.getDate();
-                    const month = day.getMonth() + 1;
-                    label = `${dayName} ${dayNum}/${month}`;
-                }
+                // Unified label format for all days
+                const dayName = dayNames[day.getDay()];
+                const dayNum = day.getDate();
+                const month = day.getMonth() + 1;
+                const label = `${dayName} ${dayNum}/${month}`;
 
                 const isFuture = day > new Date();
 
@@ -156,41 +146,70 @@
             // Add click handlers
             container.querySelectorAll('.date-tab:not([disabled])').forEach(tab => {
                 tab.addEventListener('click', () => {
-                    currentDate = new Date(tab.dataset.date + 'T00:00:00');
+                    // Parse date components directly to avoid timezone issues
+                    const [year, month, day] = tab.dataset.date.split('-').map(Number);
+                    currentDate = new Date(year, month - 1, day);
+                    updateURL();
                     renderDateTabs();
                     loadAllData();
                 });
             });
         }
 
+        function updateURL() {
+            const url = new URL(window.location);
+            url.searchParams.set('date', getDateString(currentDate));
+            window.history.replaceState({}, '', url);
+        }
+
+        function ensureDateVisible() {
+            const windowEnd = new Date(windowStartDate);
+            windowEnd.setDate(windowEnd.getDate() + 6);
+
+            if (currentDate < windowStartDate || currentDate > windowEnd) {
+                // Center window on current date
+                windowStartDate = new Date(currentDate);
+                windowStartDate.setDate(windowStartDate.getDate() - 3);
+            }
+        }
+
         document.getElementById('prev-day').addEventListener('click', () => {
-            windowStartDate.setDate(windowStartDate.getDate() - 1);
+            currentDate.setDate(currentDate.getDate() - 1);
+            ensureDateVisible();
+            updateURL();
             renderDateTabs();
+            loadAllData();
         });
 
         document.getElementById('next-day').addEventListener('click', () => {
             const today = new Date();
-            const windowEnd = new Date(windowStartDate);
-            windowEnd.setDate(windowEnd.getDate() + 6);
+            const tomorrow = new Date(currentDate);
+            tomorrow.setDate(tomorrow.getDate() + 1);
 
-            // Only allow if window end is before today
-            if (windowEnd < today) {
-                windowStartDate.setDate(windowStartDate.getDate() + 1);
+            // Only allow if not going into the future
+            if (tomorrow <= today) {
+                currentDate.setDate(currentDate.getDate() + 1);
+                ensureDateVisible();
+                updateURL();
                 renderDateTabs();
+                loadAllData();
             }
         });
 
         document.getElementById('today-btn').addEventListener('click', () => {
             currentDate = new Date();
-            // Reset window to show today
+            // Center window on today
             windowStartDate = new Date();
-            windowStartDate.setDate(windowStartDate.getDate() - 6); // Today at end of window
+            windowStartDate.setDate(windowStartDate.getDate() - 3);
+            updateURL();
             renderDateTabs();
             loadAllData();
         });
 
         document.getElementById('date-picker').addEventListener('change', (e) => {
-            const selectedDate = new Date(e.target.value + 'T00:00:00');
+            // Parse date components directly to avoid timezone issues
+            const [year, month, day] = e.target.value.split('-').map(Number);
+            const selectedDate = new Date(year, month - 1, day);
             const today = new Date();
 
             if (selectedDate <= today) {
@@ -198,6 +217,7 @@
                 // Center window around selected date
                 windowStartDate = new Date(selectedDate);
                 windowStartDate.setDate(windowStartDate.getDate() - 3);
+                updateURL();
                 renderDateTabs();
                 loadAllData();
             }
@@ -570,9 +590,25 @@
         // Initialize
         // ===================================
 
-        // Initialize window to show today at the end
-        windowStartDate = new Date();
-        windowStartDate.setDate(windowStartDate.getDate() - 6);
+        // Check URL for date parameter
+        const urlParams = new URLSearchParams(window.location.search);
+        const dateParam = urlParams.get('date');
+
+        if (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+            // Parse date components directly to avoid timezone issues
+            const [year, month, day] = dateParam.split('-').map(Number);
+            currentDate = new Date(year, month - 1, day);
+            // Don't allow future dates
+            if (currentDate > new Date()) {
+                currentDate = new Date();
+            }
+        } else {
+            currentDate = new Date();
+        }
+
+        // Center window on selected date
+        windowStartDate = new Date(currentDate);
+        windowStartDate.setDate(windowStartDate.getDate() - 3);
 
         renderDateTabs();
         loadAllData();
