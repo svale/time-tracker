@@ -1084,4 +1084,15 @@ curl "http://localhost:8765/api/daily-summary?date=2026-01-02"
 
 ---
 
-**Current Status:** Ready to begin Phase 1.1 - Database Setup
+**Current Status:** Phase 1 Complete, Phase 1.5 Complete
+
+---
+
+## Future Research & Improvements
+
+### Database Architecture
+- [ ] Research proper database synchronization between daemon and server
+  - Currently both processes load `data/activity.db` into separate in-memory copies
+  - Changes by daemon are not immediately visible to server until restart
+  - Consider options: file-based SQLite (not in-memory), shared memory, IPC, or database notifications
+  - This is a known limitation that affects real-time data visibility

@@ -114,6 +114,17 @@ Key settings:
 - LaunchAgent plist requires absolute paths to node and daemon script
 - No accessibility permissions needed (key privacy feature)
 
+## Development Notes & Warnings
+
+### Template System
+**IMPORTANT:** This project uses Nunjucks templates (`.njk` files in `server/views/`) which compile to HTML. Always edit the `.njk` source files, NOT the generated `.html` files directly. Changes to `.html` files will be overwritten.
+
+### Database State (In-Memory vs File)
+**CAUTION:** The application uses `sql.js` which runs SQLite in-memory. The database is loaded from `data/activity.db` on startup and must be explicitly saved to disk via `saveDatabase()`. Be aware that:
+- Changes are not persisted until `saveDatabase()` is called
+- If the daemon and server are both running, they have separate in-memory copies
+- This architecture needs improvement - see TODO for future research on proper database synchronization
+
 ## Active Development
 
 **Current Workplan:** See [TODO.md](TODO.md) for the active development plan with detailed tasks, success criteria, and testing steps.
