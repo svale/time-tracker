@@ -142,6 +142,22 @@
                     </div>
                 </div>
 
+                <!-- Chrome Profiles -->
+                <div class="activities-container settings-form-section">
+                    <h3 class="settings-form-title mb-2">
+                        Chrome Profiles
+                    </h3>
+                    <p class="section-description mb-3">
+                        Select which Chrome profiles to track. Enable work profiles and disable personal profiles.
+                    </p>
+
+                    <div id="chrome-profile-list">
+                        <div class="loading-state">
+                            Loading Chrome profiles...
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Database Info -->
                 <div class="activities-container settings-form-section">
                     <h3 class="settings-form-title">
@@ -649,6 +665,82 @@
             }
         }
         loadProjects();
+
+        // ===================================
+        // Chrome Profile Management
+        // ===================================
+
+        let chromeProfiles = [];
+
+        async function loadChromeProfiles() {
+            try {
+                const response = await fetch('/api/chrome-profiles');
+                chromeProfiles = await response.json();
+                renderChromeProfiles();
+            } catch (error) {
+                console.error('Error loading Chrome profiles:', error);
+                document.getElementById('chrome-profile-list').innerHTML = `
+                    <div style="text-align: center; padding: 40px; color: var(--color-warm-gray); font-style: italic;">
+                        Failed to load Chrome profiles
+                    </div>
+                `;
+            }
+        }
+
+        function renderChromeProfiles() {
+            const container = document.getElementById('chrome-profile-list');
+
+            if (chromeProfiles.length === 0) {
+                container.innerHTML = `
+                    <div style="text-align: center; padding: 40px; color: var(--color-warm-gray); font-style: italic;">
+                        No Chrome profiles found. Is Chrome installed?
+                    </div>
+                `;
+                return;
+            }
+
+            const html = chromeProfiles.map(profile => `
+                <div class="calendar-card" style="padding: 12px 16px;">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox"
+                               ${profile.enabled ? 'checked' : ''}
+                               onchange="toggleChromeProfile('${profile.id}')"
+                               style="margin-right: 12px;">
+                        <div>
+                            <span style="font-weight: 500;">${profile.name}</span>
+                            ${profile.email ? `<span style="color: var(--color-warm-gray); font-size: 0.85rem; margin-left: 8px;">${profile.email}</span>` : ''}
+                            <span style="color: var(--color-warm-gray); font-size: 0.75rem; margin-left: 8px;">(${profile.id})</span>
+                        </div>
+                    </label>
+                </div>
+            `).join('');
+
+            container.innerHTML = html;
+        }
+
+        async function toggleChromeProfile(profileId) {
+            const profile = chromeProfiles.find(p => p.id === profileId);
+            if (!profile) return;
+
+            profile.enabled = !profile.enabled;
+
+            const enabledIds = chromeProfiles.filter(p => p.enabled).map(p => p.id);
+
+            try {
+                await fetch('/api/chrome-profiles', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabledProfileIds: enabledIds })
+                });
+            } catch (error) {
+                console.error('Error updating Chrome profiles:', error);
+                profile.enabled = !profile.enabled; // Revert on error
+                renderChromeProfiles();
+            }
+        }
+
+        // Load Chrome profiles on page load
+        loadChromeProfiles();
 
         // ===================================
         // Create Project from Repo Modal

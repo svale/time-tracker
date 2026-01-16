@@ -584,6 +584,49 @@ router.post('/settings', (req, res) => {
 });
 
 /**
+ * GET /api/chrome-profiles
+ * Returns all discovered Chrome profiles with their enabled status
+ */
+router.get('/chrome-profiles', (req, res) => {
+  try {
+    const browserHistory = require('../../daemon/browser-history');
+    const profiles = browserHistory.discoverChromeProfiles();
+    const enabledIds = JSON.parse(db.getSetting('chrome_profiles_enabled', '["Default"]'));
+
+    // Add enabled status to each profile
+    const profilesWithStatus = profiles.map(p => ({
+      ...p,
+      enabled: enabledIds.includes(p.id)
+    }));
+
+    res.json(profilesWithStatus);
+  } catch (error) {
+    console.error('Error in GET /api/chrome-profiles:', error);
+    res.status(500).json({ error: 'Failed to get Chrome profiles' });
+  }
+});
+
+/**
+ * PUT /api/chrome-profiles
+ * Update enabled Chrome profiles
+ */
+router.put('/chrome-profiles', (req, res) => {
+  try {
+    const { enabledProfileIds } = req.body;
+
+    if (!Array.isArray(enabledProfileIds)) {
+      return res.status(400).json({ error: 'enabledProfileIds must be an array' });
+    }
+
+    db.setSetting('chrome_profiles_enabled', JSON.stringify(enabledProfileIds));
+    res.json({ success: true, message: 'Chrome profiles updated' });
+  } catch (error) {
+    console.error('Error in PUT /api/chrome-profiles:', error);
+    res.status(500).json({ error: 'Failed to update Chrome profiles' });
+  }
+});
+
+/**
  * GET /api/calendar-events
  * Returns calendar events for a specific date
  */

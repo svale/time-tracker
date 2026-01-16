@@ -19,9 +19,12 @@ async function processHistory() {
   try {
     console.log(`[${new Date().toLocaleTimeString()}] Reading browser history...`);
 
+    // Get enabled Chrome profiles from settings
+    const enabledProfiles = JSON.parse(db.getSetting('chrome_profiles_enabled', '["Default"]'));
+
     // Get history since last check (or last 24 hours if first run)
     const sinceTime = lastCheckTimestamp || (Date.now() - (24 * 60 * 60 * 1000));
-    const history = await browserHistory.getAllBrowserHistory(sinceTime);
+    const history = await browserHistory.getAllBrowserHistory(sinceTime, enabledProfiles);
 
     if (history.length === 0) {
       console.log('  No new history entries');

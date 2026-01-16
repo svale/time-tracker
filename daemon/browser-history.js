@@ -12,16 +12,68 @@ const os = require('os');
 const HOME = os.homedir();
 
 // Browser history database paths
-const CHROME_HISTORY = path.join(HOME, 'Library/Application Support/Google/Chrome/Default/History');
+const CHROME_BASE = path.join(HOME, 'Library/Application Support/Google/Chrome');
+const CHROME_HISTORY = path.join(CHROME_BASE, 'Default/History');
 const SAFARI_HISTORY = path.join(HOME, 'Library/Safari/History.db');
 
 /**
- * Read Chrome history
+ * Discover all Chrome profiles on the system
+ * Returns array of { id, name, email, historyPath }
  */
-async function readChromeHistory(sinceTimestamp = null) {
+function discoverChromeProfiles() {
+  const profiles = [];
+
+  if (!fs.existsSync(CHROME_BASE)) {
+    return profiles;
+  }
+
+  const entries = fs.readdirSync(CHROME_BASE, { withFileTypes: true });
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    if (entry.name !== 'Default' && !entry.name.startsWith('Profile ')) continue;
+    if (entry.name === 'Guest Profile') continue; // Skip guest profile
+
+    const prefsPath = path.join(CHROME_BASE, entry.name, 'Preferences');
+    const historyPath = path.join(CHROME_BASE, entry.name, 'History');
+
+    if (!fs.existsSync(historyPath)) continue;
+
+    let name = entry.name;
+    let email = null;
+
+    try {
+      if (fs.existsSync(prefsPath)) {
+        const prefs = JSON.parse(fs.readFileSync(prefsPath, 'utf8'));
+        name = prefs.profile?.name || entry.name;
+        email = prefs.account_info?.[0]?.email || null;
+      }
+    } catch (e) {
+      console.warn(`Could not read profile preferences for ${entry.name}:`, e.message);
+    }
+
+    profiles.push({
+      id: entry.name,
+      name: name,
+      email: email,
+      historyPath: historyPath
+    });
+  }
+
+  return profiles;
+}
+
+/**
+ * Read Chrome history
+ * @param {number|null} sinceTimestamp - Only get history since this timestamp (ms since epoch)
+ * @param {string|null} historyPath - Optional path to Chrome History file (for multi-profile support)
+ */
+async function readChromeHistory(sinceTimestamp = null, historyPath = null) {
   try {
-    if (!fs.existsSync(CHROME_HISTORY)) {
-      console.log('Chrome history not found');
+    const targetPath = historyPath || CHROME_HISTORY;
+
+    if (!fs.existsSync(targetPath)) {
+      console.log(`Chrome history not found at ${targetPath}`);
       return [];
     }
 
@@ -29,9 +81,9 @@ async function readChromeHistory(sinceTimestamp = null) {
     const tempPath = path.join(os.tmpdir(), `chrome-history-${Date.now()}.db`);
 
     try {
-      fs.copyFileSync(CHROME_HISTORY, tempPath);
+      fs.copyFileSync(targetPath, tempPath);
     } catch (error) {
-      console.error('Could not copy Chrome history (Chrome may be running):', error.message);
+      console.error(`Could not copy Chrome history from ${targetPath} (Chrome may be running):`, error.message);
       return [];
     }
 
@@ -219,11 +271,25 @@ function extractTitleFromUrl(url) {
 
 /**
  * Get all browser history since a timestamp
+ * @param {number|null} sinceTimestamp - Only get history since this timestamp (ms since epoch)
+ * @param {string[]|null} enabledProfileIds - Array of Chrome profile IDs to read from (e.g., ['Default', 'Profile 1'])
  */
-async function getAllBrowserHistory(sinceTimestamp = null) {
-  const chromeHistory = await readChromeHistory(sinceTimestamp);
-  const safariHistory = await readSafariHistory(sinceTimestamp);
+async function getAllBrowserHistory(sinceTimestamp = null, enabledProfileIds = null) {
+  let chromeHistory = [];
 
+  // If no specific profiles provided, use Default only (backwards compatible)
+  const profileIds = enabledProfileIds || ['Default'];
+  const allProfiles = discoverChromeProfiles();
+
+  for (const profileId of profileIds) {
+    const profile = allProfiles.find(p => p.id === profileId);
+    if (profile) {
+      const history = await readChromeHistory(sinceTimestamp, profile.historyPath);
+      chromeHistory = chromeHistory.concat(history);
+    }
+  }
+
+  const safariHistory = await readSafariHistory(sinceTimestamp);
   const allHistory = [...chromeHistory, ...safariHistory];
 
   // Sort by timestamp descending
@@ -347,5 +413,6 @@ module.exports = {
   readSafariHistory,
   getAllBrowserHistory,
   extractDomain,
-  aggregateIntoSessions
+  aggregateIntoSessions,
+  discoverChromeProfiles
 };
