@@ -477,6 +477,14 @@
                                 ${escapeHtml(event.project_name)}
                             </span>
                         `;
+                        // Add matched keyword indicator if auto-matched
+                        if (event.matched_keyword) {
+                            projectBadge += `
+                                <span class="keyword-badge" style="font-size: 0.75rem; color: var(--text-secondary); margin-left: 0.25rem;">
+                                    via "${escapeHtml(event.matched_keyword)}"
+                                </span>
+                            `;
+                        }
                     }
 
                     // Event details

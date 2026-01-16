@@ -99,7 +99,7 @@ async function syncCalendar(subscription) {
       const isAllDay = event.start.dateOnly || false;
 
       // Match event to project via keywords
-      const projectId = projectMatcher.matchCalendarEvent(
+      const matchResult = projectMatcher.matchCalendarEvent(
         event.summary || '',
         event.description || ''
       );
@@ -118,7 +118,8 @@ async function syncCalendar(subscription) {
         start_time: startTime,
         end_time: endTime,
         duration_seconds: durationSeconds,
-        project_id: projectId,
+        project_id: matchResult?.projectId || null,
+        matched_keyword: matchResult?.keyword || null,
         is_all_day: isAllDay,
         location: event.location || null,
         attendees_count: attendeesCount,

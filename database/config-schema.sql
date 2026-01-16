@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS calendar_events (
     end_time INTEGER NOT NULL,
     duration_seconds INTEGER NOT NULL,
     project_id INTEGER,
+    matched_keyword TEXT,
     is_all_day BOOLEAN DEFAULT 0,
     location TEXT,
     attendees_count INTEGER DEFAULT 0,

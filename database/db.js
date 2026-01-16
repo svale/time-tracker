@@ -94,6 +94,50 @@ async function initConfigDatabase() {
   } else {
     console.log('✓ Config database loaded');
   }
+
+  // Run config database migrations
+  runConfigMigrations();
+}
+
+/**
+ * Run config database migrations
+ */
+function runConfigMigrations() {
+  if (!configDb) return;
+
+  // Ensure migrations table exists
+  try {
+    configDb.run(`
+      CREATE TABLE IF NOT EXISTS config_schema_migrations (
+        version INTEGER PRIMARY KEY,
+        applied_at INTEGER DEFAULT (strftime('%s', 'now') * 1000)
+      )
+    `);
+  } catch (error) {
+    console.error('Failed to create config_schema_migrations table:', error.message);
+    return;
+  }
+
+  // Migration 6: Add matched_keyword column to calendar_events
+  try {
+    const check = configDb.exec("SELECT version FROM config_schema_migrations WHERE version = 6");
+    if (check.length === 0 || check[0].values.length === 0) {
+      // Check if column already exists
+      const tableInfo = configDb.exec("PRAGMA table_info(calendar_events)");
+      const hasColumn = tableInfo[0]?.values?.some(row => row[1] === 'matched_keyword');
+
+      if (!hasColumn) {
+        configDb.run("ALTER TABLE calendar_events ADD COLUMN matched_keyword TEXT");
+        console.log('✓ Migration 6: Added matched_keyword column to calendar_events');
+      }
+
+      // Record migration as applied
+      configDb.run("INSERT OR IGNORE INTO config_schema_migrations (version) VALUES (6)");
+      saveConfigDatabase();
+    }
+  } catch (error) {
+    console.error('Failed to run migration 6:', error.message);
+  }
 }
 
 // ==========================================
@@ -873,9 +917,9 @@ function insertCalendarEvent(eventData) {
   const stmt = configDb.prepare(`
     INSERT OR REPLACE INTO calendar_events (
       external_id, provider, calendar_id, title, description,
-      start_time, end_time, duration_seconds, project_id,
+      start_time, end_time, duration_seconds, project_id, matched_keyword,
       is_all_day, location, attendees_count, subscription_id, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   try {
@@ -889,6 +933,7 @@ function insertCalendarEvent(eventData) {
       eventData.end_time,
       eventData.duration_seconds,
       eventData.project_id || null,
+      eventData.matched_keyword || null,
       eventData.is_all_day ? 1 : 0,
       eventData.location || null,
       eventData.attendees_count || 0,
@@ -914,9 +959,9 @@ function insertCalendarEventNoSave(eventData) {
   const stmt = configDb.prepare(`
     INSERT OR REPLACE INTO calendar_events (
       external_id, provider, calendar_id, title, description,
-      start_time, end_time, duration_seconds, project_id,
+      start_time, end_time, duration_seconds, project_id, matched_keyword,
       is_all_day, location, attendees_count, subscription_id, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   try {
@@ -930,6 +975,7 @@ function insertCalendarEventNoSave(eventData) {
       eventData.end_time,
       eventData.duration_seconds,
       eventData.project_id || null,
+      eventData.matched_keyword || null,
       eventData.is_all_day ? 1 : 0,
       eventData.location || null,
       eventData.attendees_count || 0,

@@ -25,7 +25,7 @@ function matchDomain(domain) {
  * Match a calendar event to a project based on keywords
  * @param {string} title - Event title
  * @param {string} description - Event description (optional)
- * @returns {number|null} - Project ID if match found, null otherwise
+ * @returns {{projectId: number, keyword: string}|null} - Project ID and matched keyword if found, null otherwise
  */
 function matchCalendarEvent(title, description = '') {
   if (!title) return null;
@@ -46,7 +46,10 @@ function matchCalendarEvent(title, description = '') {
 
         // Check if the keyword appears in title or description
         if (searchText.includes(keyword)) {
-          return project.id;
+          return {
+            projectId: project.id,
+            keyword: keywordRow.keyword  // Return original casing
+          };
         }
       }
     }

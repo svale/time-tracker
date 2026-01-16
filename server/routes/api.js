@@ -605,6 +605,7 @@ router.get('/calendar-events', (req, res) => {
       project_id: event.project_id || null,
       project_name: event.project_name || null,
       project_color: event.project_color || null,
+      matched_keyword: event.matched_keyword || null,
       is_all_day: event.is_all_day === 1,
       location: event.location,
       attendees_count: event.attendees_count || 0

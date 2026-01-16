@@ -78,6 +78,35 @@
             </div>
         </div>
     </div>
+
+    <!-- Manage Keywords Modal -->
+    <div id="keywords-modal" class="modal-overlay">
+        <div class="modal">
+            <h3 class="modal-title">Manage Calendar Keywords</h3>
+            <p class="section-description" style="margin-bottom: 1.5rem;">
+                <strong id="keywords-project-name"></strong>
+            </p>
+
+            <div class="domains-section">
+                <h4 style="margin: 0 0 1rem 0; font-size: 1rem;">Calendar Keywords</h4>
+                <p style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 1rem;">
+                    Calendar events containing these keywords will be auto-assigned to this project.
+                </p>
+                <ul id="keywords-list" class="domain-list">
+                    <li class="loading-state">Loading keywords...</li>
+                </ul>
+
+                <div class="domain-add-form">
+                    <input type="text" id="new-keyword" class="form-input" placeholder="e.g., standup, sprint planning" style="flex: 1;">
+                    <button type="button" class="btn btn-primary" onclick="addKeyword()">Add Keyword</button>
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <button type="button" class="btn" onclick="closeKeywordsModal()">Close</button>
+            </div>
+        </div>
+    </div>
 {% endblock %}
 
 {% block scripts %}
@@ -143,10 +172,15 @@
                                 <span>⟡</span>
                                 <span id="domain-count-${project.id}">Loading...</span>
                             </div>
+                            <div class="project-stat">
+                                <span>📅</span>
+                                <span id="keyword-count-${project.id}">Loading...</span>
+                            </div>
                         </div>
 
                         <div class="project-actions">
-                            <button class="btn" onclick="openDomainsModal(${project.id})">Manage Domains</button>
+                            <button class="btn" onclick="openDomainsModal(${project.id})">Domains</button>
+                            <button class="btn" onclick="openKeywordsModal(${project.id})">Keywords</button>
                             <button class="btn" onclick="openEditProjectModal(${project.id})">Edit</button>
                             <button class="btn btn-danger" onclick="archiveProject(${project.id})">Archive</button>
                         </div>
@@ -156,9 +190,10 @@
 
             container.innerHTML = html;
 
-            // Load domain counts for each project
+            // Load domain and keyword counts for each project
             projects.forEach(project => {
                 loadDomainCount(project.id);
+                loadKeywordCount(project.id);
             });
         }
 
@@ -381,6 +416,131 @@
             }
         }
 
+        // ==========================================
+        // Keyword Management Functions
+        // ==========================================
+
+        // Load keyword count for a project
+        async function loadKeywordCount(projectId) {
+            try {
+                const response = await fetch(`/api/projects/${projectId}/keywords`);
+                const keywords = await response.json();
+                const countEl = document.getElementById(`keyword-count-${projectId}`);
+                if (countEl) {
+                    countEl.textContent = `${keywords.length} keyword${keywords.length !== 1 ? 's' : ''}`;
+                }
+            } catch (error) {
+                console.error(`Error loading keyword count for project ${projectId}:`, error);
+            }
+        }
+
+        // Open keywords modal
+        async function openKeywordsModal(projectId) {
+            currentProjectId = projectId;
+            const project = projects.find(p => p.id === projectId);
+            if (!project) return;
+
+            document.getElementById('keywords-project-name').textContent = project.name;
+            document.getElementById('keywords-modal').classList.add('active');
+            await loadKeywords();
+        }
+
+        // Close keywords modal
+        function closeKeywordsModal() {
+            document.getElementById('keywords-modal').classList.remove('active');
+            currentProjectId = null;
+        }
+
+        // Load keywords for current project
+        async function loadKeywords() {
+            if (!currentProjectId) return;
+
+            const listEl = document.getElementById('keywords-list');
+            listEl.innerHTML = '<li class="loading-state">Loading keywords...</li>';
+
+            try {
+                const response = await fetch(`/api/projects/${currentProjectId}/keywords`);
+                const keywords = await response.json();
+
+                if (keywords.length === 0) {
+                    listEl.innerHTML = `
+                        <li class="empty-state">
+                            <p style="margin: 1rem 0;">No keywords set yet.</p>
+                            <p style="font-size: 0.875rem; color: var(--text-secondary);">Add keywords to automatically assign calendar events to this project.</p>
+                        </li>
+                    `;
+                    return;
+                }
+
+                listEl.innerHTML = keywords.map(k => `
+                    <li class="domain-item">
+                        <span class="domain-name">${escapeHtml(k.keyword)}</span>
+                        <button class="btn btn-danger" onclick="removeKeyword(${k.id})">Remove</button>
+                    </li>
+                `).join('');
+            } catch (error) {
+                console.error('Error loading keywords:', error);
+                listEl.innerHTML = '<li class="empty-state">Error loading keywords</li>';
+            }
+        }
+
+        // Add keyword to current project
+        async function addKeyword() {
+            if (!currentProjectId) return;
+
+            const keywordInput = document.getElementById('new-keyword');
+            const keyword = keywordInput.value.trim();
+
+            if (!keyword) {
+                alert('Please enter a keyword');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/projects/${currentProjectId}/keywords`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ keyword })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    alert(error.error || 'Failed to add keyword');
+                    return;
+                }
+
+                keywordInput.value = '';
+                await loadKeywords();
+                loadKeywordCount(currentProjectId);
+            } catch (error) {
+                console.error('Error adding keyword:', error);
+                alert('Failed to add keyword');
+            }
+        }
+
+        // Remove keyword
+        async function removeKeyword(keywordId) {
+            if (!confirm('Remove this keyword?')) return;
+
+            try {
+                const response = await fetch(`/api/project-keywords/${keywordId}`, {
+                    method: 'DELETE'
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    alert(error.error || 'Failed to remove keyword');
+                    return;
+                }
+
+                await loadKeywords();
+                loadKeywordCount(currentProjectId);
+            } catch (error) {
+                console.error('Error removing keyword:', error);
+                alert('Failed to remove keyword');
+            }
+        }
+
         // Escape HTML to prevent XSS
         function escapeHtml(text) {
             const div = document.createElement('div');
@@ -393,6 +553,7 @@
             if (e.key === 'Escape') {
                 closeProjectModal();
                 closeDomainsModal();
+                closeKeywordsModal();
             }
         });
 
@@ -402,6 +563,9 @@
         });
         document.getElementById('domains-modal').addEventListener('click', (e) => {
             if (e.target.id === 'domains-modal') closeDomainsModal();
+        });
+        document.getElementById('keywords-modal').addEventListener('click', (e) => {
+            if (e.target.id === 'keywords-modal') closeKeywordsModal();
         });
 
         // Load projects on page load
