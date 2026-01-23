@@ -265,6 +265,37 @@ function runActivityMigrations() {
   // Note: Old migrations are no longer needed for activity.db
   // The schema.sql already has the correct structure
   // Project/calendar tables have been moved to config.db
+
+  // Migration 6: Add focus_samples table
+  // Note: Using version 6 because versions 1-5 were used by old migrations
+  try {
+    const check = activityDb.exec("SELECT version FROM schema_migrations WHERE version = 6");
+    if (check.length === 0 || check[0].values.length === 0) {
+      // Check if table already exists
+      const tableCheck = activityDb.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='focus_samples'");
+      if (tableCheck.length === 0 || tableCheck[0].values.length === 0) {
+        activityDb.run(`
+          CREATE TABLE IF NOT EXISTS focus_samples (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp INTEGER NOT NULL,
+            app_name TEXT,
+            browser TEXT,
+            domain TEXT,
+            created_at INTEGER DEFAULT (strftime('%s', 'now') * 1000)
+          )
+        `);
+        activityDb.run("CREATE INDEX IF NOT EXISTS idx_focus_timestamp ON focus_samples(timestamp)");
+        activityDb.run("CREATE INDEX IF NOT EXISTS idx_focus_domain ON focus_samples(domain)");
+        console.log('✓ Migration 6: Created focus_samples table');
+      }
+
+      // Record migration as applied
+      activityDb.run("INSERT OR IGNORE INTO schema_migrations (version) VALUES (6)");
+      saveActivityDatabase();
+    }
+  } catch (error) {
+    console.error('Failed to run migration 6 (focus_samples):', error.message);
+  }
 }
 
 // ==========================================
@@ -411,6 +442,112 @@ function updateSessionsByDomain(domain, projectId) {
   countStmt.free();
 
   saveActivityDatabase();
+  return count;
+}
+
+// ==========================================
+// Activity Database Functions - Focus Samples
+// ==========================================
+
+/**
+ * Insert a focus sample
+ */
+function insertFocusSample({ timestamp, app_name, browser, domain }) {
+  if (!activityDb) throw new Error('Activity database not initialized');
+
+  const stmt = activityDb.prepare(`
+    INSERT INTO focus_samples (timestamp, app_name, browser, domain)
+    VALUES (?, ?, ?, ?)
+  `);
+
+  stmt.run([timestamp, app_name, browser, domain]);
+  stmt.free();
+
+  saveActivityDatabase();
+}
+
+/**
+ * Get focus samples within a time range
+ */
+function getFocusSamples(startTime, endTime) {
+  if (!activityDb) throw new Error('Activity database not initialized');
+
+  const results = [];
+  const stmt = activityDb.prepare(`
+    SELECT * FROM focus_samples
+    WHERE timestamp >= ? AND timestamp <= ?
+    ORDER BY timestamp
+  `);
+
+  stmt.bind([startTime, endTime]);
+  while (stmt.step()) {
+    results.push(stmt.getAsObject());
+  }
+  stmt.free();
+
+  return results;
+}
+
+/**
+ * Get focus samples for a specific domain within a time range
+ */
+function getFocusSamplesForDomain(domain, startTime, endTime) {
+  if (!activityDb) throw new Error('Activity database not initialized');
+
+  const results = [];
+  const stmt = activityDb.prepare(`
+    SELECT * FROM focus_samples
+    WHERE domain = ? AND timestamp >= ? AND timestamp <= ?
+    ORDER BY timestamp
+  `);
+
+  stmt.bind([domain, startTime, endTime]);
+  while (stmt.step()) {
+    results.push(stmt.getAsObject());
+  }
+  stmt.free();
+
+  return results;
+}
+
+/**
+ * Count focus samples matching browser and domain within a time range
+ */
+function countFocusSamplesForSession(browser, domain, startTime, endTime) {
+  if (!activityDb) throw new Error('Activity database not initialized');
+
+  const stmt = activityDb.prepare(`
+    SELECT COUNT(*) as count FROM focus_samples
+    WHERE browser = ? AND domain = ? AND timestamp >= ? AND timestamp <= ?
+  `);
+
+  stmt.bind([browser, domain, startTime, endTime]);
+  stmt.step();
+  const result = stmt.getAsObject();
+  stmt.free();
+
+  return result.count;
+}
+
+/**
+ * Delete focus samples older than a given timestamp
+ */
+function cleanupOldFocusSamples(olderThanTimestamp) {
+  if (!activityDb) throw new Error('Activity database not initialized');
+
+  const stmt = activityDb.prepare('DELETE FROM focus_samples WHERE timestamp < ?');
+  stmt.run([olderThanTimestamp]);
+  stmt.free();
+
+  const countStmt = activityDb.prepare('SELECT changes() as count');
+  countStmt.step();
+  const count = countStmt.getAsObject().count;
+  countStmt.free();
+
+  if (count > 0) {
+    saveActivityDatabase();
+  }
+
   return count;
 }
 
@@ -1486,6 +1623,13 @@ module.exports = {
   getTimelineData,
   assignSessionToProject,
   updateSessionsByDomain,
+
+  // Activity database - Focus samples
+  insertFocusSample,
+  getFocusSamples,
+  getFocusSamplesForDomain,
+  countFocusSamplesForSession,
+  cleanupOldFocusSamples,
 
   // Cross-database reports
   getDailyReport,
