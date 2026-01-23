@@ -132,6 +132,11 @@ CREATE INDEX IF NOT EXISTS idx_git_repositories_project ON git_repositories(proj
 INSERT OR IGNORE INTO settings (key, value) VALUES ('git_scan_interval_minutes', '5');
 INSERT OR IGNORE INTO settings (key, value) VALUES ('git_scan_enabled', 'true');
 
+-- Focus tracking settings
+INSERT OR IGNORE INTO settings (key, value) VALUES ('focus_tracking_enabled', 'true');
+INSERT OR IGNORE INTO settings (key, value) VALUES ('focus_poll_interval_seconds', '30');
+INSERT OR IGNORE INTO settings (key, value) VALUES ('max_session_duration_minutes', '30');
+
 -- Migration tracking for config database
 CREATE TABLE IF NOT EXISTS config_schema_migrations (
     version INTEGER PRIMARY KEY,

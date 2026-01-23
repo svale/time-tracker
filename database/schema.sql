@@ -49,3 +49,16 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
     version INTEGER PRIMARY KEY,
     applied_at INTEGER DEFAULT (strftime('%s', 'now') * 1000)
 );
+
+-- Focus samples table for tracking browser focus state
+CREATE TABLE IF NOT EXISTS focus_samples (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp INTEGER NOT NULL,        -- When sample was taken (ms)
+    app_name TEXT,                     -- Frontmost app name
+    browser TEXT,                      -- 'Chrome', 'Safari', or null
+    domain TEXT,                       -- Domain of active tab (if browser focused)
+    created_at INTEGER DEFAULT (strftime('%s', 'now') * 1000)
+);
+
+CREATE INDEX IF NOT EXISTS idx_focus_timestamp ON focus_samples(timestamp);
+CREATE INDEX IF NOT EXISTS idx_focus_domain ON focus_samples(domain);

@@ -55,6 +55,58 @@
                     </form>
                 </div>
 
+                <!-- Focus Tracking Settings -->
+                <div class="activities-container settings-form-section">
+                    <h3 class="settings-form-title">
+                        Focus Tracking
+                    </h3>
+                    <p class="section-description mb-3">
+                        Track when your browser is actually focused to get more accurate time measurements. Time only counts when the browser window is active.
+                    </p>
+                    <form id="focus-settings-form">
+                        <div class="form-group">
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox"
+                                       id="focus_tracking_enabled"
+                                       style="margin-right: 8px;">
+                                Enable Focus Tracking
+                            </label>
+                            <p class="settings-form-help">
+                                When enabled, time only counts when the browser is the active application and focused on a tracked domain.
+                            </p>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="focus_poll_interval">Poll Interval (seconds)</label>
+                            <select id="focus_poll_interval" style="width: auto; padding: 8px 16px;">
+                                <option value="15">15 seconds</option>
+                                <option value="30">30 seconds (default)</option>
+                                <option value="60">60 seconds</option>
+                            </select>
+                            <p class="settings-form-help">
+                                How often to check if browser is focused. Lower values are more accurate but use more resources.
+                            </p>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="max_session_duration">Max Session Duration (minutes)</label>
+                            <select id="max_session_duration" style="width: auto; padding: 8px 16px;">
+                                <option value="15">15 minutes</option>
+                                <option value="30">30 minutes (default)</option>
+                                <option value="60">60 minutes</option>
+                            </select>
+                            <p class="settings-form-help">
+                                Maximum duration for a single session. Sessions longer than this will be capped, preventing over-counting from leaving a tab open.
+                            </p>
+                        </div>
+
+                        <div class="settings-form-actions">
+                            <button type="submit">Save Focus Settings</button>
+                            <div id="focus-save-message" class="settings-message"></div>
+                        </div>
+                    </form>
+                </div>
+
                 <!-- Calendar Subscriptions -->
                 <div class="activities-container settings-form-section">
                     <h3 class="settings-form-title mb-2">
@@ -272,6 +324,61 @@
 
         // Load settings on page load
         loadSettings();
+
+        // ===================================
+        // Focus Tracking Settings
+        // ===================================
+
+        // Load focus settings
+        async function loadFocusSettings() {
+            try {
+                const response = await fetch('/api/settings/focus');
+                const settings = await response.json();
+
+                document.getElementById('focus_tracking_enabled').checked = settings.focus_tracking_enabled;
+                document.getElementById('focus_poll_interval').value = settings.focus_poll_interval_seconds || 30;
+                document.getElementById('max_session_duration').value = settings.max_session_duration_minutes || 30;
+            } catch (error) {
+                console.error('Error loading focus settings:', error);
+            }
+        }
+
+        // Save focus settings
+        document.getElementById('focus-settings-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            const formData = {
+                focus_tracking_enabled: document.getElementById('focus_tracking_enabled').checked,
+                focus_poll_interval_seconds: parseInt(document.getElementById('focus_poll_interval').value),
+                max_session_duration_minutes: parseInt(document.getElementById('max_session_duration').value)
+            };
+
+            try {
+                const response = await fetch('/api/settings/focus', {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(formData)
+                });
+
+                if (response.ok) {
+                    const messageEl = document.getElementById('focus-save-message');
+                    messageEl.textContent = '✓ Focus settings saved! Restart daemon to apply changes.';
+                    setTimeout(() => {
+                        messageEl.textContent = '';
+                    }, 5000);
+                } else {
+                    alert('Failed to save focus settings');
+                }
+            } catch (error) {
+                console.error('Error saving focus settings:', error);
+                alert('Failed to save focus settings');
+            }
+        });
+
+        // Load focus settings on page load
+        loadFocusSettings();
 
         // ===================================
         // Calendar Subscription Management

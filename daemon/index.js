@@ -10,6 +10,7 @@ const db = require('../database/db');
 const tracker = require('./tracker');
 const icalSync = require('./ical-sync');
 const gitTracker = require('./git-tracker');
+const focusTracker = require('./focus-tracker');
 
 /**
  * Start the daemon
@@ -39,6 +40,16 @@ async function startDaemon() {
   // Start git activity tracking
   console.log('Starting git activity tracker...');
   gitTracker.startTracking();
+
+  // Start focus tracking if enabled
+  const focusTrackingEnabled = db.getSetting('focus_tracking_enabled', 'true') === 'true';
+  if (focusTrackingEnabled) {
+    const pollIntervalSeconds = parseInt(db.getSetting('focus_poll_interval_seconds', '30'), 10);
+    console.log(`Starting focus tracker (polling every ${pollIntervalSeconds}s)...`);
+    focusTracker.startFocusTracking(pollIntervalSeconds * 1000);
+  } else {
+    console.log('Focus tracking is disabled');
+  }
 
   // Periodic database reload (every 60 seconds)
   console.log('Setting up periodic database reload...');
@@ -81,10 +92,31 @@ async function startDaemon() {
   // Store interval for cleanup
   global.calendarSyncInterval = calendarSyncInterval;
 
+  // Periodic focus sample cleanup (every 24 hours)
+  // Deletes samples older than 7 days to keep database size manageable
+  const FOCUS_CLEANUP_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours
+  const FOCUS_SAMPLE_RETENTION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+  const focusCleanupInterval = setInterval(() => {
+    try {
+      const olderThan = Date.now() - FOCUS_SAMPLE_RETENTION_MS;
+      const deleted = db.cleanupOldFocusSamples(olderThan);
+      if (deleted > 0) {
+        console.log(`[FocusCleanup] Deleted ${deleted} focus samples older than 7 days`);
+      }
+    } catch (error) {
+      console.error('[FocusCleanup] Error:', error.message);
+    }
+  }, FOCUS_CLEANUP_INTERVAL);
+
+  // Store interval for cleanup
+  global.focusCleanupInterval = focusCleanupInterval;
+
   console.log('\n✓ Daemon is running!');
   console.log('  - Tracking: Chrome & Safari browser history');
   console.log('  - Git: Local repository activity tracking');
   console.log('  - Calendar: iCal feed sync every 15 minutes');
+  console.log('  - Focus: ' + (focusTrackingEnabled ? `Polling every ${parseInt(db.getSetting('focus_poll_interval_seconds', '30'), 10)}s` : 'Disabled'));
   console.log('  - Check interval: Every 5 minutes');
   console.log('  - Database: data/activity.db');
   console.log('  - Web UI: http://localhost:8765 (run `npm run server` to start)\n');
@@ -105,9 +137,17 @@ function shutdown() {
   // Stop git tracking
   gitTracker.stopTracking();
 
+  // Stop focus tracking
+  focusTracker.stopFocusTracking();
+
   // Stop calendar sync
   if (global.calendarSyncInterval) {
     clearInterval(global.calendarSyncInterval);
+  }
+
+  // Stop focus sample cleanup
+  if (global.focusCleanupInterval) {
+    clearInterval(global.focusCleanupInterval);
   }
 
   // Stop database reload interval
