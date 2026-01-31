@@ -22,10 +22,10 @@ async function startDaemon() {
 
   console.log('✓ No system permissions required!\n');
 
-  // Initialize database
+  // Initialize database (synchronous with better-sqlite3)
   console.log('Initializing database...');
   try {
-    await db.initDatabase();
+    db.initDatabase();
   } catch (error) {
     console.error('✗ Database initialization failed:', error.message);
     process.exit(1);
@@ -51,21 +51,20 @@ async function startDaemon() {
     console.log('Focus tracking is disabled');
   }
 
-  // Periodic database reload (every 60 seconds)
-  console.log('Setting up periodic database reload...');
-  const DB_RELOAD_INTERVAL = 60 * 1000; // 60 seconds
+  // Periodic WAL checkpoint (every 5 minutes) to keep WAL file size manageable
+  console.log('Setting up periodic WAL checkpoint...');
+  const WAL_CHECKPOINT_INTERVAL = 5 * 60 * 1000; // 5 minutes
 
-  const dbReloadInterval = setInterval(async () => {
+  const walCheckpointInterval = setInterval(() => {
     try {
-      await db.reloadDatabase();
-      console.log('[DB] Reloaded from disk');
+      db.walCheckpoint();
     } catch (error) {
-      console.error('[DB] Reload error:', error.message);
+      console.error('[DB] WAL checkpoint error:', error.message);
     }
-  }, DB_RELOAD_INTERVAL);
+  }, WAL_CHECKPOINT_INTERVAL);
 
   // Store interval for cleanup
-  global.dbReloadInterval = dbReloadInterval;
+  global.walCheckpointInterval = walCheckpointInterval;
 
   // Start calendar sync (every 15 minutes)
   console.log('Starting iCal calendar sync...');
@@ -118,7 +117,7 @@ async function startDaemon() {
   console.log('  - Calendar: iCal feed sync every 15 minutes');
   console.log('  - Focus: ' + (focusTrackingEnabled ? `Polling every ${parseInt(db.getSetting('focus_poll_interval_seconds', '30'), 10)}s` : 'Disabled'));
   console.log('  - Check interval: Every 5 minutes');
-  console.log('  - Database: data/activity.db');
+  console.log('  - Database: ~/.time-tracker/timetracker.db (WAL mode)');
   console.log('  - Web UI: http://localhost:8765 (run `npm run server` to start)\n');
   console.log('Press Ctrl+C to stop\n');
   console.log('Activity log:');
@@ -150,9 +149,9 @@ function shutdown() {
     clearInterval(global.focusCleanupInterval);
   }
 
-  // Stop database reload interval
-  if (global.dbReloadInterval) {
-    clearInterval(global.dbReloadInterval);
+  // Stop WAL checkpoint interval
+  if (global.walCheckpointInterval) {
+    clearInterval(global.walCheckpointInterval);
   }
 
   // Close database

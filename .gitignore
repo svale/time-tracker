@@ -1,6 +1,11 @@
 node_modules/
+
+# Old data directory (deprecated - data now in ~/.time-tracker/)
 data/*.db
 data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+
 .DS_Store
 *.log
 .env

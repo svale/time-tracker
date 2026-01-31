@@ -17,12 +17,12 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "better-sqlite3": "^12.6.2",
     "date-fns": "^3.0.0",
     "dotenv": "^17.2.3",
     "express": "^4.18.0",
     "node-ical": "^0.22.1",
-    "nunjucks": "^3.2.4",
-    "sql.js": "^1.10.0"
+    "nunjucks": "^3.2.4"
   },
   "devDependencies": {
     "nodemon": "^3.0.0"

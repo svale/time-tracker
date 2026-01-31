@@ -19,9 +19,9 @@ const PORT = process.env.PORT || 8765;
  * Initialize server
  */
 async function initServer() {
-  // Initialize database
+  // Initialize database (synchronous with better-sqlite3)
   console.log('Initializing database...');
-  await db.initDatabase();
+  db.initDatabase();
 
   // Configure Nunjucks templating
   const viewsPath = path.join(__dirname, 'views');
@@ -69,7 +69,7 @@ async function start() {
       console.log('  Time Tracker Web UI');
       console.log('═════════════════════════════════════════════\n');
       console.log(`  ✓ Server running at http://localhost:${PORT}`);
-      console.log(`  ✓ Database: data/activity.db\n`);
+      console.log(`  ✓ Database: ~/.time-tracker/timetracker.db (WAL mode)\n`);
       console.log('  Pages:');
       console.log(`    - Dashboard:  http://localhost:${PORT}/`);
       console.log(`    - Reports:    http://localhost:${PORT}/reports`);
