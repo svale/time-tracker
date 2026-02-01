@@ -16,6 +16,9 @@
   ],
   "author": "",
   "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "dependencies": {
     "better-sqlite3": "^12.6.2",
     "date-fns": "^3.0.0",
