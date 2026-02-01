@@ -4,7 +4,7 @@
  * NO ACCESSIBILITY PERMISSIONS REQUIRED
  */
 
-const initSqlJs = require('sql.js');
+const Database = require('better-sqlite3');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -68,7 +68,7 @@ function discoverChromeProfiles() {
  * @param {number|null} sinceTimestamp - Only get history since this timestamp (ms since epoch)
  * @param {string|null} historyPath - Optional path to Chrome History file (for multi-profile support)
  */
-async function readChromeHistory(sinceTimestamp = null, historyPath = null) {
+function readChromeHistory(sinceTimestamp = null, historyPath = null) {
   try {
     const targetPath = historyPath || CHROME_HISTORY;
 
@@ -88,9 +88,7 @@ async function readChromeHistory(sinceTimestamp = null, historyPath = null) {
     }
 
     // Read the copied database
-    const SQL = await initSqlJs();
-    const buffer = fs.readFileSync(tempPath);
-    const db = new SQL.Database(buffer);
+    const db = new Database(tempPath, { readonly: true });
 
     // Chrome stores timestamps as microseconds since 1601-01-01
     // Convert our timestamp (ms since 1970) to Chrome format
@@ -117,11 +115,9 @@ async function readChromeHistory(sinceTimestamp = null, historyPath = null) {
     `;
 
     const results = [];
-    const stmt = db.prepare(query);
+    const rows = db.prepare(query).all();
 
-    while (stmt.step()) {
-      const row = stmt.getAsObject();
-
+    for (const row of rows) {
       // Convert Chrome timestamp to JS timestamp
       // Chrome: microseconds since 1601-01-01
       // JS: milliseconds since 1970-01-01
@@ -140,7 +136,6 @@ async function readChromeHistory(sinceTimestamp = null, historyPath = null) {
       });
     }
 
-    stmt.free();
     db.close();
 
     // Clean up temp file
@@ -157,7 +152,7 @@ async function readChromeHistory(sinceTimestamp = null, historyPath = null) {
 /**
  * Read Safari history
  */
-async function readSafariHistory(sinceTimestamp = null) {
+function readSafariHistory(sinceTimestamp = null) {
   try {
     if (!fs.existsSync(SAFARI_HISTORY)) {
       console.log('Safari history not found');
@@ -174,9 +169,7 @@ async function readSafariHistory(sinceTimestamp = null) {
       return [];
     }
 
-    const SQL = await initSqlJs();
-    const buffer = fs.readFileSync(tempPath);
-    const db = new SQL.Database(buffer);
+    const db = new Database(tempPath, { readonly: true });
 
     // Safari stores timestamps as seconds since 2001-01-01 (Cocoa epoch)
     let whereClause = '';
@@ -198,11 +191,9 @@ async function readSafariHistory(sinceTimestamp = null) {
     `;
 
     const results = [];
-    const stmt = db.prepare(query);
+    const rows = db.prepare(query).all();
 
-    while (stmt.step()) {
-      const row = stmt.getAsObject();
-
+    for (const row of rows) {
       // Convert Safari timestamp to JS timestamp
       // Safari: seconds since 2001-01-01
       // JS: milliseconds since 1970-01-01
@@ -221,7 +212,6 @@ async function readSafariHistory(sinceTimestamp = null) {
       });
     }
 
-    stmt.free();
     db.close();
 
     // Clean up
@@ -274,7 +264,7 @@ function extractTitleFromUrl(url) {
  * @param {number|null} sinceTimestamp - Only get history since this timestamp (ms since epoch)
  * @param {string[]|null} enabledProfileIds - Array of Chrome profile IDs to read from (e.g., ['Default', 'Profile 1'])
  */
-async function getAllBrowserHistory(sinceTimestamp = null, enabledProfileIds = null) {
+function getAllBrowserHistory(sinceTimestamp = null, enabledProfileIds = null) {
   let chromeHistory = [];
 
   // If no specific profiles provided, use Default only (backwards compatible)
@@ -284,12 +274,12 @@ async function getAllBrowserHistory(sinceTimestamp = null, enabledProfileIds = n
   for (const profileId of profileIds) {
     const profile = allProfiles.find(p => p.id === profileId);
     if (profile) {
-      const history = await readChromeHistory(sinceTimestamp, profile.historyPath);
+      const history = readChromeHistory(sinceTimestamp, profile.historyPath);
       chromeHistory = chromeHistory.concat(history);
     }
   }
 
-  const safariHistory = await readSafariHistory(sinceTimestamp);
+  const safariHistory = readSafariHistory(sinceTimestamp);
   const allHistory = [...chromeHistory, ...safariHistory];
 
   // Sort by timestamp descending

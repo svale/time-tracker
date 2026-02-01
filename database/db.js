@@ -1,291 +1,119 @@
 /**
- * Database Module - Dual Database Architecture
+ * Database Module - better-sqlite3 with WAL mode
  *
- * Two separate databases to prevent race conditions:
- * - activity.db: Sessions and events (daemon writes, server reads)
- * - config.db: Projects, calendars, settings (server writes, daemon reads)
+ * Single database at ~/.time-tracker/timetracker.db
+ * Uses WAL mode for safe concurrent access between daemon and server
+ * No manual save/reload needed - writes go directly to disk
  */
 
-const initSqlJs = require('sql.js');
-const fs = require('fs');
+const Database = require('better-sqlite3');
+const os = require('os');
 const path = require('path');
+const fs = require('fs');
 const encryption = require('../server/utils/encryption');
 
 // Database paths
-const DATA_DIR = path.join(__dirname, '..', 'data');
-const ACTIVITY_DB_PATH = path.join(DATA_DIR, 'activity.db');
-const CONFIG_DB_PATH = path.join(DATA_DIR, 'config.db');
-const ACTIVITY_SCHEMA_PATH = path.join(__dirname, 'schema.sql');
-const CONFIG_SCHEMA_PATH = path.join(__dirname, 'config-schema.sql');
+const DATA_DIR = path.join(os.homedir(), '.time-tracker');
+const DB_PATH = path.join(DATA_DIR, 'timetracker.db');
+const SCHEMA_PATH = path.join(__dirname, 'schema.sql');
 
-// Database instances
-let activityDb = null;
-let configDb = null;
-
-// SQL.js instance (shared)
-let SQL = null;
+// Database instance
+let db = null;
 
 // ==========================================
 // Database Initialization
 // ==========================================
 
 /**
- * Initialize both databases
+ * Initialize the database (synchronous)
  */
-async function initDatabase() {
-  SQL = await initSqlJs();
-
+function initDatabase() {
   // Ensure data directory exists
   if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
   }
 
-  // Initialize activity database
-  await initActivityDatabase();
+  // Open database (creates if not exists)
+  db = new Database(DB_PATH);
 
-  // Initialize config database
-  await initConfigDatabase();
+  // Enable WAL mode and busy timeout for concurrent access
+  db.pragma('journal_mode = WAL');
+  db.pragma('busy_timeout = 5000');
 
-  return { activityDb, configDb };
-}
-
-/**
- * Initialize activity database (sessions, events)
- */
-async function initActivityDatabase() {
-  let buffer = null;
-  if (fs.existsSync(ACTIVITY_DB_PATH)) {
-    buffer = fs.readFileSync(ACTIVITY_DB_PATH);
-  }
-
-  activityDb = new SQL.Database(buffer);
-
-  if (!buffer) {
+  // Check if database needs initialization
+  const tableCheck = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='settings'").get();
+  if (!tableCheck) {
     // New database - run schema
-    const schema = fs.readFileSync(ACTIVITY_SCHEMA_PATH, 'utf8');
-    activityDb.run(schema);
-    saveActivityDatabase();
-    console.log('✓ Activity database initialized');
+    const schema = fs.readFileSync(SCHEMA_PATH, 'utf8');
+    db.exec(schema);
+    console.log('✓ Database initialized at', DB_PATH);
   } else {
-    console.log('✓ Activity database loaded');
+    console.log('✓ Database loaded from', DB_PATH);
   }
 
-  // Run activity migrations
-  runActivityMigrations();
+  // Run migrations
+  runMigrations();
+
+  return db;
 }
 
 /**
- * Initialize config database (projects, calendars, settings)
+ * Run database migrations
  */
-async function initConfigDatabase() {
-  let buffer = null;
-  if (fs.existsSync(CONFIG_DB_PATH)) {
-    buffer = fs.readFileSync(CONFIG_DB_PATH);
-  }
-
-  configDb = new SQL.Database(buffer);
-
-  if (!buffer) {
-    // New database - run schema
-    const schema = fs.readFileSync(CONFIG_SCHEMA_PATH, 'utf8');
-    configDb.run(schema);
-    saveConfigDatabase();
-    console.log('✓ Config database initialized');
-  } else {
-    console.log('✓ Config database loaded');
-  }
-
-  // Run config database migrations
-  runConfigMigrations();
-}
-
-/**
- * Run config database migrations
- */
-function runConfigMigrations() {
-  if (!configDb) return;
-
-  // Ensure migrations table exists
-  try {
-    configDb.run(`
-      CREATE TABLE IF NOT EXISTS config_schema_migrations (
-        version INTEGER PRIMARY KEY,
-        applied_at INTEGER DEFAULT (strftime('%s', 'now') * 1000)
-      )
-    `);
-  } catch (error) {
-    console.error('Failed to create config_schema_migrations table:', error.message);
-    return;
-  }
-
-  // Migration 6: Add matched_keyword column to calendar_events
-  try {
-    const check = configDb.exec("SELECT version FROM config_schema_migrations WHERE version = 6");
-    if (check.length === 0 || check[0].values.length === 0) {
-      // Check if column already exists
-      const tableInfo = configDb.exec("PRAGMA table_info(calendar_events)");
-      const hasColumn = tableInfo[0]?.values?.some(row => row[1] === 'matched_keyword');
-
-      if (!hasColumn) {
-        configDb.run("ALTER TABLE calendar_events ADD COLUMN matched_keyword TEXT");
-        console.log('✓ Migration 6: Added matched_keyword column to calendar_events');
-      }
-
-      // Record migration as applied
-      configDb.run("INSERT OR IGNORE INTO config_schema_migrations (version) VALUES (6)");
-      saveConfigDatabase();
-    }
-  } catch (error) {
-    console.error('Failed to run migration 6:', error.message);
-  }
-}
-
-// ==========================================
-// Save Functions (CRITICAL: Separate saves)
-// ==========================================
-
-/**
- * Save activity database to disk
- */
-function saveActivityDatabase() {
-  if (!activityDb) return;
-
-  try {
-    const data = activityDb.export();
-    const buffer = Buffer.from(data);
-    const tempPath = ACTIVITY_DB_PATH + '.tmp';
-    fs.writeFileSync(tempPath, buffer);
-    fs.renameSync(tempPath, ACTIVITY_DB_PATH);
-  } catch (error) {
-    console.error('[ActivityDB] Failed to save:', error.message);
-    throw error;
-  }
-}
-
-/**
- * Save config database to disk
- */
-function saveConfigDatabase() {
-  if (!configDb) return;
-
-  try {
-    const data = configDb.export();
-    const buffer = Buffer.from(data);
-    const tempPath = CONFIG_DB_PATH + '.tmp';
-    fs.writeFileSync(tempPath, buffer);
-    fs.renameSync(tempPath, CONFIG_DB_PATH);
-  } catch (error) {
-    console.error('[ConfigDB] Failed to save:', error.message);
-    throw error;
-  }
-}
-
-/**
- * Legacy save function - saves both databases
- * @deprecated Use saveActivityDatabase or saveConfigDatabase instead
- */
-function saveDatabase() {
-  saveActivityDatabase();
-  saveConfigDatabase();
-}
-
-// ==========================================
-// Reload Functions
-// ==========================================
-
-/**
- * Reload activity database from disk
- */
-async function reloadActivityDatabase() {
-  if (!SQL) {
-    SQL = await initSqlJs();
-  }
-
-  if (activityDb) {
-    saveActivityDatabase();
-    activityDb.close();
-  }
-
-  let buffer = null;
-  if (fs.existsSync(ACTIVITY_DB_PATH)) {
-    buffer = fs.readFileSync(ACTIVITY_DB_PATH);
-  }
-
-  activityDb = new SQL.Database(buffer);
-}
-
-/**
- * Reload config database from disk
- */
-async function reloadConfigDatabase() {
-  if (!SQL) {
-    SQL = await initSqlJs();
-  }
-
-  if (configDb) {
-    saveConfigDatabase();
-    configDb.close();
-  }
-
-  let buffer = null;
-  if (fs.existsSync(CONFIG_DB_PATH)) {
-    buffer = fs.readFileSync(CONFIG_DB_PATH);
-  }
-
-  configDb = new SQL.Database(buffer);
-}
-
-/**
- * Reload both databases from disk
- */
-async function reloadDatabase() {
-  await reloadActivityDatabase();
-  await reloadConfigDatabase();
-}
-
-// ==========================================
-// Activity Migrations
-// ==========================================
-
-function runActivityMigrations() {
-  if (!activityDb) return;
+function runMigrations() {
+  if (!db) return;
 
   // Ensure schema_migrations table exists
-  try {
-    activityDb.run(`
-      CREATE TABLE IF NOT EXISTS schema_migrations (
-        version INTEGER PRIMARY KEY,
-        applied_at INTEGER DEFAULT (strftime('%s', 'now') * 1000)
-      )
-    `);
-  } catch (error) {
-    console.error('Failed to create schema_migrations table:', error.message);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      version INTEGER PRIMARY KEY,
+      applied_at INTEGER DEFAULT (strftime('%s', 'now') * 1000)
+    )
+  `);
+
+  // Migration 7: First migration for unified database
+  // Mark as applied since we're starting fresh with unified schema
+  const check7 = db.prepare("SELECT version FROM schema_migrations WHERE version = 7").get();
+  if (!check7) {
+    db.prepare("INSERT OR IGNORE INTO schema_migrations (version) VALUES (7)").run();
+    console.log('✓ Migration 7: Unified database schema initialized');
   }
-
-  // Note: Old migrations are no longer needed for activity.db
-  // The schema.sql already has the correct structure
-  // Project/calendar tables have been moved to config.db
 }
-
-// ==========================================
-// Close Functions
-// ==========================================
 
 /**
- * Close both database connections
+ * WAL checkpoint - call periodically to keep WAL file size manageable
  */
-function closeDatabase() {
-  if (activityDb) {
-    saveActivityDatabase();
-    activityDb.close();
-    activityDb = null;
-  }
-  if (configDb) {
-    saveConfigDatabase();
-    configDb.close();
-    configDb = null;
+function walCheckpoint() {
+  if (db) {
+    db.pragma('wal_checkpoint(TRUNCATE)');
   }
 }
+
+/**
+ * Close database connection
+ */
+function closeDatabase() {
+  if (db) {
+    // Checkpoint before closing to ensure all data is in main database file
+    db.pragma('wal_checkpoint(TRUNCATE)');
+    db.close();
+    db = null;
+    console.log('✓ Database closed');
+  }
+}
+
+// ==========================================
+// Backward Compatibility - Deprecated Functions
+// ==========================================
+
+// These functions are kept for backward compatibility but are no-ops
+// better-sqlite3 writes directly to disk, no manual save needed
+function saveDatabase() {}
+function saveActivityDatabase() {}
+function saveConfigDatabase() {}
+function reloadDatabase() {}
+function reloadActivityDatabase() {}
+function reloadConfigDatabase() {}
 
 // ==========================================
 // Activity Database Functions
@@ -295,69 +123,55 @@ function closeDatabase() {
  * Insert an activity event
  */
 function insertEvent({ timestamp, app_name, app_bundle_id, window_title, is_idle = false }) {
-  if (!activityDb) throw new Error('Activity database not initialized');
+  if (!db) throw new Error('Database not initialized');
 
-  const stmt = activityDb.prepare(`
+  const stmt = db.prepare(`
     INSERT INTO activity_events (timestamp, app_name, app_bundle_id, window_title, is_idle)
     VALUES (?, ?, ?, ?, ?)
   `);
 
-  stmt.run([timestamp, app_name, app_bundle_id, window_title, is_idle ? 1 : 0]);
-  stmt.free();
-
-  saveActivityDatabase();
+  stmt.run(timestamp, app_name, app_bundle_id, window_title, is_idle ? 1 : 0);
 }
 
 /**
  * Insert an activity session
  */
 function insertSession({ start_time, end_time, duration_seconds, app_name, app_bundle_id, domain = null, project_id = null, page_title = null }) {
-  if (!activityDb) throw new Error('Activity database not initialized');
+  if (!db) throw new Error('Database not initialized');
 
-  const stmt = activityDb.prepare(`
+  const stmt = db.prepare(`
     INSERT INTO activity_sessions (start_time, end_time, duration_seconds, app_name, app_bundle_id, domain, project_id, page_title)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
-  stmt.run([start_time, end_time, duration_seconds, app_name, app_bundle_id, domain, project_id, page_title]);
-  stmt.free();
-
-  saveActivityDatabase();
+  stmt.run(start_time, end_time, duration_seconds, app_name, app_bundle_id, domain, project_id, page_title);
 }
 
 /**
  * Get recent events (for debugging)
  */
 function getRecentEvents(limit = 10) {
-  if (!activityDb) throw new Error('Activity database not initialized');
+  if (!db) throw new Error('Database not initialized');
 
-  const results = [];
-  const stmt = activityDb.prepare(`
+  const stmt = db.prepare(`
     SELECT * FROM activity_events
     ORDER BY timestamp DESC
     LIMIT ?
   `);
 
-  stmt.bind([limit]);
-  while (stmt.step()) {
-    results.push(stmt.getAsObject());
-  }
-  stmt.free();
-
-  return results;
+  return stmt.all(limit);
 }
 
 /**
  * Get timeline data (hourly breakdown)
  */
 function getTimelineData(dateString) {
-  if (!activityDb) throw new Error('Activity database not initialized');
+  if (!db) throw new Error('Database not initialized');
 
   const startOfDay = new Date(dateString).setHours(0, 0, 0, 0);
   const endOfDay = new Date(dateString).setHours(23, 59, 59, 999);
 
-  const results = [];
-  const stmt = activityDb.prepare(`
+  const stmt = db.prepare(`
     SELECT
       strftime('%H:00', start_time / 1000, 'unixepoch', 'localtime') as hour,
       SUM(duration_seconds) as total_seconds
@@ -367,160 +181,184 @@ function getTimelineData(dateString) {
     ORDER BY hour
   `);
 
-  stmt.bind([startOfDay, endOfDay]);
-  while (stmt.step()) {
-    results.push(stmt.getAsObject());
-  }
-  stmt.free();
-
-  return results;
+  return stmt.all(startOfDay, endOfDay);
 }
 
 /**
- * Assign session to project (writes to activity db)
+ * Assign session to project
  */
 function assignSessionToProject(sessionId, projectId) {
-  if (!activityDb) throw new Error('Activity database not initialized');
+  if (!db) throw new Error('Database not initialized');
 
-  const stmt = activityDb.prepare('UPDATE activity_sessions SET project_id = ? WHERE id = ?');
-  stmt.run([projectId, sessionId]);
-  stmt.free();
-
-  saveActivityDatabase();
+  const stmt = db.prepare('UPDATE activity_sessions SET project_id = ? WHERE id = ?');
+  stmt.run(projectId, sessionId);
 }
 
 /**
  * Update all sessions matching a domain to assign them to a project
  */
 function updateSessionsByDomain(domain, projectId) {
-  if (!activityDb) throw new Error('Activity database not initialized');
+  if (!db) throw new Error('Database not initialized');
   if (!domain) return 0;
 
-  const stmt = activityDb.prepare(`
+  const stmt = db.prepare(`
     UPDATE activity_sessions
     SET project_id = ?
     WHERE domain = ? AND (project_id IS NULL OR project_id = 0)
   `);
 
-  stmt.run([projectId, domain]);
-  stmt.free();
-
-  const countStmt = activityDb.prepare('SELECT changes() as count');
-  countStmt.step();
-  const count = countStmt.getAsObject().count;
-  countStmt.free();
-
-  saveActivityDatabase();
-  return count;
+  const result = stmt.run(projectId, domain);
+  return result.changes;
 }
 
 // ==========================================
-// Config Database Functions - Settings
+// Focus Samples Functions
+// ==========================================
+
+/**
+ * Insert a focus sample
+ */
+function insertFocusSample({ timestamp, app_name, browser, domain }) {
+  if (!db) throw new Error('Database not initialized');
+
+  const stmt = db.prepare(`
+    INSERT INTO focus_samples (timestamp, app_name, browser, domain)
+    VALUES (?, ?, ?, ?)
+  `);
+
+  stmt.run(timestamp, app_name, browser, domain);
+}
+
+/**
+ * Get focus samples within a time range
+ */
+function getFocusSamples(startTime, endTime) {
+  if (!db) throw new Error('Database not initialized');
+
+  const stmt = db.prepare(`
+    SELECT * FROM focus_samples
+    WHERE timestamp >= ? AND timestamp <= ?
+    ORDER BY timestamp
+  `);
+
+  return stmt.all(startTime, endTime);
+}
+
+/**
+ * Get focus samples for a specific domain within a time range
+ */
+function getFocusSamplesForDomain(domain, startTime, endTime) {
+  if (!db) throw new Error('Database not initialized');
+
+  const stmt = db.prepare(`
+    SELECT * FROM focus_samples
+    WHERE domain = ? AND timestamp >= ? AND timestamp <= ?
+    ORDER BY timestamp
+  `);
+
+  return stmt.all(domain, startTime, endTime);
+}
+
+/**
+ * Count focus samples matching browser and domain within a time range
+ */
+function countFocusSamplesForSession(browser, domain, startTime, endTime) {
+  if (!db) throw new Error('Database not initialized');
+
+  const stmt = db.prepare(`
+    SELECT COUNT(*) as count FROM focus_samples
+    WHERE browser = ? AND domain = ? AND timestamp >= ? AND timestamp <= ?
+  `);
+
+  const result = stmt.get(browser, domain, startTime, endTime);
+  return result.count;
+}
+
+/**
+ * Delete focus samples older than a given timestamp
+ */
+function cleanupOldFocusSamples(olderThanTimestamp) {
+  if (!db) throw new Error('Database not initialized');
+
+  const stmt = db.prepare('DELETE FROM focus_samples WHERE timestamp < ?');
+  const result = stmt.run(olderThanTimestamp);
+  return result.changes;
+}
+
+// ==========================================
+// Settings Functions
 // ==========================================
 
 /**
  * Get setting value
  */
 function getSetting(key, defaultValue = null) {
-  if (!configDb) throw new Error('Config database not initialized');
+  if (!db) throw new Error('Database not initialized');
 
-  const stmt = configDb.prepare('SELECT value FROM settings WHERE key = ?');
-  stmt.bind([key]);
+  const stmt = db.prepare('SELECT value FROM settings WHERE key = ?');
+  const result = stmt.get(key);
 
-  if (stmt.step()) {
-    const result = stmt.getAsObject();
-    stmt.free();
-    return result.value;
-  }
-
-  stmt.free();
-  return defaultValue;
+  return result ? result.value : defaultValue;
 }
 
 /**
  * Set setting value
  */
 function setSetting(key, value) {
-  if (!configDb) throw new Error('Config database not initialized');
+  if (!db) throw new Error('Database not initialized');
 
-  const stmt = configDb.prepare(`
+  const stmt = db.prepare(`
     INSERT OR REPLACE INTO settings (key, value, updated_at)
     VALUES (?, ?, ?)
   `);
 
-  stmt.run([key, value, Date.now()]);
-  stmt.free();
-
-  saveConfigDatabase();
+  stmt.run(key, value, Date.now());
 }
 
 // ==========================================
-// Config Database Functions - Projects
+// Projects Functions
 // ==========================================
 
 /**
  * Get all projects (non-archived)
  */
 function getProjects() {
-  if (!configDb) throw new Error('Config database not initialized');
+  if (!db) throw new Error('Database not initialized');
 
-  const results = [];
-  const stmt = configDb.prepare('SELECT * FROM projects WHERE is_archived = 0 ORDER BY name');
-
-  while (stmt.step()) {
-    results.push(stmt.getAsObject());
-  }
-  stmt.free();
-
-  return results;
+  const stmt = db.prepare('SELECT * FROM projects WHERE is_archived = 0 ORDER BY name');
+  return stmt.all();
 }
 
 /**
  * Get single project by ID
  */
 function getProject(id) {
-  if (!configDb) throw new Error('Config database not initialized');
+  if (!db) throw new Error('Database not initialized');
 
-  const stmt = configDb.prepare('SELECT * FROM projects WHERE id = ?');
-  stmt.bind([id]);
-
-  let result = null;
-  if (stmt.step()) {
-    result = stmt.getAsObject();
-  }
-  stmt.free();
-
-  return result;
+  const stmt = db.prepare('SELECT * FROM projects WHERE id = ?');
+  return stmt.get(id);
 }
 
 /**
  * Create new project
  */
 function createProject({ name, description = null, color = '#3B82F6' }) {
-  if (!configDb) throw new Error('Config database not initialized');
+  if (!db) throw new Error('Database not initialized');
 
-  const stmt = configDb.prepare(`
+  const stmt = db.prepare(`
     INSERT INTO projects (name, description, color)
     VALUES (?, ?, ?)
   `);
 
-  stmt.run([name, description, color]);
-  stmt.free();
-
-  const idStmt = configDb.prepare('SELECT last_insert_rowid() as id');
-  idStmt.step();
-  const id = idStmt.getAsObject().id;
-  idStmt.free();
-
-  saveConfigDatabase();
-  return id;
+  const result = stmt.run(name, description, color);
+  return result.lastInsertRowid;
 }
 
 /**
  * Update project
  */
 function updateProject(id, { name, description, color }) {
-  if (!configDb) throw new Error('Config database not initialized');
+  if (!db) throw new Error('Database not initialized');
 
   const updates = [];
   const values = [];
@@ -544,71 +382,54 @@ function updateProject(id, { name, description, color }) {
   values.push(Date.now());
   values.push(id);
 
-  const stmt = configDb.prepare(`
+  const stmt = db.prepare(`
     UPDATE projects
     SET ${updates.join(', ')}
     WHERE id = ?
   `);
 
-  stmt.run(values);
-  stmt.free();
-
-  saveConfigDatabase();
+  stmt.run(...values);
 }
 
 /**
  * Archive project (soft delete)
  */
 function archiveProject(id) {
-  if (!configDb) throw new Error('Config database not initialized');
+  if (!db) throw new Error('Database not initialized');
 
-  const stmt = configDb.prepare('UPDATE projects SET is_archived = 1, updated_at = ? WHERE id = ?');
-  stmt.run([Date.now(), id]);
-  stmt.free();
-
-  saveConfigDatabase();
+  const stmt = db.prepare('UPDATE projects SET is_archived = 1, updated_at = ? WHERE id = ?');
+  stmt.run(Date.now(), id);
 }
 
 // ==========================================
-// Config Database Functions - Project Domains
+// Project Domains Functions
 // ==========================================
 
 /**
  * Get all domains for a project
  */
 function getProjectDomains(projectId) {
-  if (!configDb) throw new Error('Config database not initialized');
+  if (!db) throw new Error('Database not initialized');
 
-  const results = [];
-  const stmt = configDb.prepare('SELECT * FROM project_domains WHERE project_id = ?');
-  stmt.bind([projectId]);
-
-  while (stmt.step()) {
-    results.push(stmt.getAsObject());
-  }
-  stmt.free();
-
-  return results;
+  const stmt = db.prepare('SELECT * FROM project_domains WHERE project_id = ?');
+  return stmt.all(projectId);
 }
 
 /**
  * Add domain mapping to project
  */
 function addProjectDomain(projectId, domain) {
-  if (!configDb) throw new Error('Config database not initialized');
+  if (!db) throw new Error('Database not initialized');
 
-  const stmt = configDb.prepare(`
+  const stmt = db.prepare(`
     INSERT INTO project_domains (project_id, domain)
     VALUES (?, ?)
   `);
 
   try {
-    stmt.run([projectId, domain]);
-    stmt.free();
-    saveConfigDatabase();
+    stmt.run(projectId, domain);
     return true;
   } catch (error) {
-    stmt.free();
     if (error.message.includes('UNIQUE')) {
       throw new Error('Domain already mapped to this project');
     }
@@ -620,93 +441,66 @@ function addProjectDomain(projectId, domain) {
  * Remove domain mapping
  */
 function removeProjectDomain(id) {
-  if (!configDb) throw new Error('Config database not initialized');
+  if (!db) throw new Error('Database not initialized');
 
-  const stmt = configDb.prepare('DELETE FROM project_domains WHERE id = ?');
-  stmt.run([id]);
-  stmt.free();
-
-  saveConfigDatabase();
+  const stmt = db.prepare('DELETE FROM project_domains WHERE id = ?');
+  stmt.run(id);
 }
 
 /**
  * Find project ID by domain
  */
 function findProjectByDomain(domain) {
-  if (!configDb) throw new Error('Config database not initialized');
+  if (!db) throw new Error('Database not initialized');
   if (!domain) return null;
 
-  const stmt = configDb.prepare('SELECT project_id FROM project_domains WHERE domain = ? LIMIT 1');
-  stmt.bind([domain]);
+  const stmt = db.prepare('SELECT project_id FROM project_domains WHERE domain = ? LIMIT 1');
+  const result = stmt.get(domain);
 
-  let projectId = null;
-  if (stmt.step()) {
-    projectId = stmt.getAsObject().project_id;
-  }
-  stmt.free();
-
-  return projectId;
+  return result ? result.project_id : null;
 }
 
 // ==========================================
-// Config Database Functions - Project Keywords
+// Project Keywords Functions
 // ==========================================
 
 /**
  * Get all keywords for a project
  */
 function getProjectKeywords(projectId) {
-  if (!configDb) throw new Error('Config database not initialized');
+  if (!db) throw new Error('Database not initialized');
 
-  const results = [];
-  const stmt = configDb.prepare('SELECT * FROM project_calendar_keywords WHERE project_id = ? ORDER BY keyword');
-  stmt.bind([projectId]);
-
-  while (stmt.step()) {
-    results.push(stmt.getAsObject());
-  }
-  stmt.free();
-
-  return results;
+  const stmt = db.prepare('SELECT * FROM project_calendar_keywords WHERE project_id = ? ORDER BY keyword');
+  return stmt.all(projectId);
 }
 
 /**
  * Add keyword to project
  */
 function addProjectKeyword(projectId, keyword) {
-  if (!configDb) throw new Error('Config database not initialized');
+  if (!db) throw new Error('Database not initialized');
 
-  const stmt = configDb.prepare(`
+  const stmt = db.prepare(`
     INSERT INTO project_calendar_keywords (project_id, keyword)
     VALUES (?, ?)
   `);
 
-  try {
-    stmt.run([projectId, keyword]);
-    stmt.free();
-    saveConfigDatabase();
-    return true;
-  } catch (error) {
-    stmt.free();
-    throw error;
-  }
+  stmt.run(projectId, keyword);
+  return true;
 }
 
 /**
  * Remove keyword from project
  */
 function removeProjectKeyword(id) {
-  if (!configDb) throw new Error('Config database not initialized');
+  if (!db) throw new Error('Database not initialized');
 
-  const stmt = configDb.prepare('DELETE FROM project_calendar_keywords WHERE id = ?');
-  stmt.run([id]);
-  stmt.free();
-
-  saveConfigDatabase();
+  const stmt = db.prepare('DELETE FROM project_calendar_keywords WHERE id = ?');
+  stmt.run(id);
 }
 
 // ==========================================
-// Config Database Functions - Calendar
+// Calendar Functions
 // ==========================================
 
 // Helper to create db wrapper for encryption
@@ -714,7 +508,7 @@ function getDbWrapper() {
   return {
     getSetting: (key, defaultValue) => getSetting(key, defaultValue),
     setSetting: (key, value) => setSetting(key, value),
-    saveDatabase: () => saveConfigDatabase()
+    saveDatabase: () => {} // No-op for better-sqlite3
   };
 }
 
@@ -722,49 +516,14 @@ function getDbWrapper() {
  * Get all active calendar subscriptions
  */
 function getCalendarSubscriptions() {
-  if (!configDb) throw new Error('Config database not initialized');
+  if (!db) throw new Error('Database not initialized');
 
-  const results = [];
-  const stmt = configDb.prepare('SELECT * FROM calendar_subscriptions ORDER BY name');
+  const stmt = db.prepare('SELECT * FROM calendar_subscriptions ORDER BY name');
+  const rows = stmt.all();
 
-  while (stmt.step()) {
-    const row = stmt.getAsObject();
+  return rows.map(row => {
     try {
-      results.push({
-        id: row.id,
-        name: row.name,
-        ical_url: encryption.decrypt(row.ical_url, getDbWrapper()),
-        provider: row.provider,
-        is_active: row.is_active === 1,
-        include_in_worktime: row.include_in_worktime === 1,
-        last_sync: row.last_sync,
-        last_error: row.last_error,
-        created_at: row.created_at,
-        updated_at: row.updated_at
-      });
-    } catch (error) {
-      console.error(`Failed to decrypt calendar subscription ${row.id}:`, error.message);
-    }
-  }
-  stmt.free();
-
-  return results;
-}
-
-/**
- * Get a single calendar subscription by ID
- */
-function getCalendarSubscription(id) {
-  if (!configDb) throw new Error('Config database not initialized');
-
-  const stmt = configDb.prepare('SELECT * FROM calendar_subscriptions WHERE id = ?');
-  stmt.bind([id]);
-
-  let result = null;
-  if (stmt.step()) {
-    const row = stmt.getAsObject();
-    try {
-      result = {
+      return {
         id: row.id,
         name: row.name,
         ical_url: encryption.decrypt(row.ical_url, getDbWrapper()),
@@ -778,48 +537,63 @@ function getCalendarSubscription(id) {
       };
     } catch (error) {
       console.error(`Failed to decrypt calendar subscription ${row.id}:`, error.message);
+      return null;
     }
-  }
-  stmt.free();
+  }).filter(Boolean);
+}
 
-  return result;
+/**
+ * Get a single calendar subscription by ID
+ */
+function getCalendarSubscription(id) {
+  if (!db) throw new Error('Database not initialized');
+
+  const stmt = db.prepare('SELECT * FROM calendar_subscriptions WHERE id = ?');
+  const row = stmt.get(id);
+
+  if (!row) return null;
+
+  try {
+    return {
+      id: row.id,
+      name: row.name,
+      ical_url: encryption.decrypt(row.ical_url, getDbWrapper()),
+      provider: row.provider,
+      is_active: row.is_active === 1,
+      include_in_worktime: row.include_in_worktime === 1,
+      last_sync: row.last_sync,
+      last_error: row.last_error,
+      created_at: row.created_at,
+      updated_at: row.updated_at
+    };
+  } catch (error) {
+    console.error(`Failed to decrypt calendar subscription ${row.id}:`, error.message);
+    return null;
+  }
 }
 
 /**
  * Add a new calendar subscription
  */
 function addCalendarSubscription({ name, ical_url, provider = 'google' }) {
-  if (!configDb) throw new Error('Config database not initialized');
+  if (!db) throw new Error('Database not initialized');
 
-  try {
-    const encryptedUrl = encryption.encrypt(ical_url, getDbWrapper());
+  const encryptedUrl = encryption.encrypt(ical_url, getDbWrapper());
 
-    const stmt = configDb.prepare(`
-      INSERT INTO calendar_subscriptions (name, ical_url, provider)
-      VALUES (?, ?, ?)
-    `);
+  const stmt = db.prepare(`
+    INSERT INTO calendar_subscriptions (name, ical_url, provider)
+    VALUES (?, ?, ?)
+  `);
 
-    stmt.run([name, encryptedUrl, provider]);
-    stmt.free();
-
-    const idStmt = configDb.prepare('SELECT last_insert_rowid() as id');
-    idStmt.step();
-    const id = idStmt.getAsObject().id;
-    idStmt.free();
-
-    saveConfigDatabase();
-    return id;
-  } catch (error) {
-    console.error('Failed to add calendar subscription:', error.message);
-    throw error;
-  }
+  const result = stmt.run(name, encryptedUrl, provider);
+  return result.lastInsertRowid;
 }
 
 /**
  * Update calendar subscription
  */
 function updateCalendarSubscription(id, { name, ical_url, provider, is_active }) {
-  if (!configDb) throw new Error('Config database not initialized');
+  if (!db) throw new Error('Database not initialized');
 
   const updates = [];
   const values = [];
@@ -847,74 +621,62 @@ function updateCalendarSubscription(id, { name, ical_url, provider, is_active })
   values.push(Date.now());
   values.push(id);
 
-  const stmt = configDb.prepare(`
+  const stmt = db.prepare(`
     UPDATE calendar_subscriptions
     SET ${updates.join(', ')}
     WHERE id = ?
   `);
 
-  stmt.run(values);
-  stmt.free();
-
-  saveConfigDatabase();
+  stmt.run(...values);
 }
 
 /**
  * Update calendar subscription worktime setting
  */
 function updateCalendarSubscriptionWorktime(id, includeInWorktime) {
-  if (!configDb) throw new Error('Config database not initialized');
+  if (!db) throw new Error('Database not initialized');
 
-  const stmt = configDb.prepare(`
+  const stmt = db.prepare(`
     UPDATE calendar_subscriptions
     SET include_in_worktime = ?, updated_at = ?
     WHERE id = ?
   `);
 
-  stmt.run([includeInWorktime ? 1 : 0, Date.now(), id]);
-  stmt.free();
-
-  saveConfigDatabase();
+  stmt.run(includeInWorktime ? 1 : 0, Date.now(), id);
 }
 
 /**
  * Update calendar subscription sync status
  */
 function updateCalendarSubscriptionSync(id, { last_sync, last_error = null }) {
-  if (!configDb) throw new Error('Config database not initialized');
+  if (!db) throw new Error('Database not initialized');
 
-  const stmt = configDb.prepare(`
+  const stmt = db.prepare(`
     UPDATE calendar_subscriptions
     SET last_sync = ?, last_error = ?, updated_at = ?
     WHERE id = ?
   `);
 
-  stmt.run([last_sync, last_error, Date.now(), id]);
-  stmt.free();
-
-  saveConfigDatabase();
+  stmt.run(last_sync, last_error, Date.now(), id);
 }
 
 /**
  * Delete calendar subscription
  */
 function deleteCalendarSubscription(id) {
-  if (!configDb) throw new Error('Config database not initialized');
+  if (!db) throw new Error('Database not initialized');
 
-  const stmt = configDb.prepare('DELETE FROM calendar_subscriptions WHERE id = ?');
-  stmt.run([id]);
-  stmt.free();
-
-  saveConfigDatabase();
+  const stmt = db.prepare('DELETE FROM calendar_subscriptions WHERE id = ?');
+  stmt.run(id);
 }
 
 /**
  * Insert calendar event
  */
 function insertCalendarEvent(eventData) {
-  if (!configDb) throw new Error('Config database not initialized');
+  if (!db) throw new Error('Database not initialized');
 
-  const stmt = configDb.prepare(`
+  const stmt = db.prepare(`
     INSERT OR REPLACE INTO calendar_events (
       external_id, provider, calendar_id, title, description,
       start_time, end_time, duration_seconds, project_id, matched_keyword,
@@ -922,90 +684,46 @@ function insertCalendarEvent(eventData) {
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
-  try {
-    stmt.run([
-      eventData.external_id,
-      eventData.provider || 'ical',
-      eventData.calendar_id || null,
-      eventData.title,
-      eventData.description || null,
-      eventData.start_time,
-      eventData.end_time,
-      eventData.duration_seconds,
-      eventData.project_id || null,
-      eventData.matched_keyword || null,
-      eventData.is_all_day ? 1 : 0,
-      eventData.location || null,
-      eventData.attendees_count || 0,
-      eventData.subscription_id || null,
-      Date.now()
-    ]);
-    stmt.free();
-    saveConfigDatabase();
-    return true;
-  } catch (error) {
-    stmt.free();
-    console.error('Failed to insert calendar event:', error.message);
-    throw error;
-  }
+  stmt.run(
+    eventData.external_id,
+    eventData.provider || 'ical',
+    eventData.calendar_id || null,
+    eventData.title,
+    eventData.description || null,
+    eventData.start_time,
+    eventData.end_time,
+    eventData.duration_seconds,
+    eventData.project_id || null,
+    eventData.matched_keyword || null,
+    eventData.is_all_day ? 1 : 0,
+    eventData.location || null,
+    eventData.attendees_count || 0,
+    eventData.subscription_id || null,
+    Date.now()
+  );
+
+  return true;
 }
 
 /**
- * Insert calendar event WITHOUT saving to disk
+ * Insert calendar event - same as insertCalendarEvent (no-save variant deprecated)
  */
 function insertCalendarEventNoSave(eventData) {
-  if (!configDb) throw new Error('Config database not initialized');
-
-  const stmt = configDb.prepare(`
-    INSERT OR REPLACE INTO calendar_events (
-      external_id, provider, calendar_id, title, description,
-      start_time, end_time, duration_seconds, project_id, matched_keyword,
-      is_all_day, location, attendees_count, subscription_id, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-
-  try {
-    stmt.run([
-      eventData.external_id,
-      eventData.provider || 'ical',
-      eventData.calendar_id || null,
-      eventData.title,
-      eventData.description || null,
-      eventData.start_time,
-      eventData.end_time,
-      eventData.duration_seconds,
-      eventData.project_id || null,
-      eventData.matched_keyword || null,
-      eventData.is_all_day ? 1 : 0,
-      eventData.location || null,
-      eventData.attendees_count || 0,
-      eventData.subscription_id || null,
-      Date.now()
-    ]);
-    stmt.free();
-    return true;
-  } catch (error) {
-    stmt.free();
-    console.error('Failed to insert calendar event:', error.message);
-    throw error;
-  }
+  return insertCalendarEvent(eventData);
 }
 
 /**
  * Assign calendar event to project
  */
 function assignCalendarEventToProject(eventId, projectId) {
-  if (!configDb) throw new Error('Config database not initialized');
+  if (!db) throw new Error('Database not initialized');
 
-  const stmt = configDb.prepare('UPDATE calendar_events SET project_id = ?, updated_at = ? WHERE id = ?');
-  stmt.run([projectId, Date.now(), eventId]);
-  stmt.free();
-
-  saveConfigDatabase();
+  const stmt = db.prepare('UPDATE calendar_events SET project_id = ?, updated_at = ? WHERE id = ?');
+  stmt.run(projectId, Date.now(), eventId);
 }
 
 // ==========================================
-// Cross-Database Functions (Application-level joins)
+// Cross-Database Functions
 // ==========================================
 
 /**
@@ -1024,12 +742,12 @@ function getProjectsMap() {
  * Get daily report (aggregated by app/domain) - legacy single row
  */
 function getDailyReport(dateString) {
-  if (!activityDb) throw new Error('Activity database not initialized');
+  if (!db) throw new Error('Database not initialized');
 
   const startOfDay = new Date(dateString).setHours(0, 0, 0, 0);
   const endOfDay = new Date(dateString).setHours(23, 59, 59, 999);
 
-  const stmt = activityDb.prepare(`
+  const stmt = db.prepare(`
     SELECT
       app_name,
       app_bundle_id,
@@ -1042,22 +760,18 @@ function getDailyReport(dateString) {
     ORDER BY total_seconds DESC
   `);
 
-  const result = stmt.getAsObject([startOfDay, endOfDay]);
-  stmt.free();
-
-  return result;
+  return stmt.get(startOfDay, endOfDay);
 }
 
 /**
- * Get all daily reports with project info (cross-database join)
+ * Get all daily reports with project info
  */
 function getDailyReportAll(dateString, projectId = null) {
-  if (!activityDb) throw new Error('Activity database not initialized');
+  if (!db) throw new Error('Database not initialized');
 
   const startOfDay = new Date(dateString).setHours(0, 0, 0, 0);
   const endOfDay = new Date(dateString).setHours(23, 59, 59, 999);
 
-  // Get sessions from activity database
   let query = `
     SELECT
       app_name,
@@ -1083,15 +797,10 @@ function getDailyReportAll(dateString, projectId = null) {
     ORDER BY total_seconds DESC
   `;
 
-  const results = [];
-  const stmt = activityDb.prepare(query);
-  stmt.bind(params);
-  while (stmt.step()) {
-    results.push(stmt.getAsObject());
-  }
-  stmt.free();
+  const stmt = db.prepare(query);
+  const results = stmt.all(...params);
 
-  // Get project info from config database and merge
+  // Get project info and merge
   const projectsMap = getProjectsMap();
 
   return results.map(row => ({
@@ -1102,11 +811,10 @@ function getDailyReportAll(dateString, projectId = null) {
 }
 
 /**
- * Get workday statistics (cross-database join)
+ * Get workday statistics
  */
 function getWorkdayStats(dateString) {
-  if (!activityDb) throw new Error('Activity database not initialized');
-  if (!configDb) throw new Error('Config database not initialized');
+  if (!db) throw new Error('Database not initialized');
 
   const startOfDay = new Date(dateString).setHours(0, 0, 0, 0);
   const endOfDay = new Date(dateString).setHours(23, 59, 59, 999);
@@ -1114,28 +822,23 @@ function getWorkdayStats(dateString) {
   // Get project map for lookups
   const projectsMap = getProjectsMap();
 
-  // 1. Get activity sessions from activity database
-  const sessions = [];
-  const sessionStmt = activityDb.prepare(`
+  // 1. Get activity sessions
+  const sessionStmt = db.prepare(`
     SELECT start_time, end_time, duration_seconds, domain, project_id
     FROM activity_sessions
     WHERE start_time >= ? AND start_time <= ?
     ORDER BY start_time
   `);
-  sessionStmt.bind([startOfDay, endOfDay]);
-  while (sessionStmt.step()) {
-    const row = sessionStmt.getAsObject();
-    sessions.push({
-      ...row,
-      project_name: row.project_id ? (projectsMap[row.project_id]?.name || null) : null,
-      project_color: row.project_id ? (projectsMap[row.project_id]?.color || null) : null
-    });
-  }
-  sessionStmt.free();
+  const sessionRows = sessionStmt.all(startOfDay, endOfDay);
 
-  // 2. Get calendar events from config database (with subscription filter)
-  const calendarEvents = [];
-  const calStmt = configDb.prepare(`
+  const sessions = sessionRows.map(row => ({
+    ...row,
+    project_name: row.project_id ? (projectsMap[row.project_id]?.name || null) : null,
+    project_color: row.project_id ? (projectsMap[row.project_id]?.color || null) : null
+  }));
+
+  // 2. Get calendar events (with subscription filter)
+  const calStmt = db.prepare(`
     SELECT e.start_time, e.end_time, e.title, e.project_id
     FROM calendar_events e
     JOIN calendar_subscriptions cs ON e.subscription_id = cs.id
@@ -1144,16 +847,13 @@ function getWorkdayStats(dateString) {
       AND cs.include_in_worktime = 1
     ORDER BY e.start_time
   `);
-  calStmt.bind([startOfDay, endOfDay]);
-  while (calStmt.step()) {
-    const row = calStmt.getAsObject();
-    calendarEvents.push({
-      ...row,
-      project_name: row.project_id ? (projectsMap[row.project_id]?.name || null) : null,
-      project_color: row.project_id ? (projectsMap[row.project_id]?.color || null) : null
-    });
-  }
-  calStmt.free();
+  const calRows = calStmt.all(startOfDay, endOfDay);
+
+  const calendarEvents = calRows.map(row => ({
+    ...row,
+    project_name: row.project_id ? (projectsMap[row.project_id]?.name || null) : null,
+    project_color: row.project_id ? (projectsMap[row.project_id]?.color || null) : null
+  }));
 
   return { sessions, calendarEvents };
 }
@@ -1162,7 +862,7 @@ function getWorkdayStats(dateString) {
  * Get calendar events for a specific date (with project info)
  */
 function getCalendarEvents(dateString) {
-  if (!configDb) throw new Error('Config database not initialized');
+  if (!db) throw new Error('Database not initialized');
 
   const startOfDay = new Date(dateString).setHours(0, 0, 0, 0);
   const endOfDay = new Date(dateString).setHours(23, 59, 59, 999);
@@ -1170,115 +870,78 @@ function getCalendarEvents(dateString) {
   // Get project map for lookups
   const projectsMap = getProjectsMap();
 
-  const results = [];
-  const stmt = configDb.prepare(`
+  const stmt = db.prepare(`
     SELECT *
     FROM calendar_events
     WHERE start_time >= ? AND start_time <= ?
     ORDER BY start_time
   `);
 
-  stmt.bind([startOfDay, endOfDay]);
-  while (stmt.step()) {
-    const row = stmt.getAsObject();
-    results.push({
-      ...row,
-      project_name: row.project_id ? (projectsMap[row.project_id]?.name || null) : null,
-      project_color: row.project_id ? (projectsMap[row.project_id]?.color || null) : null
-    });
-  }
-  stmt.free();
+  const rows = stmt.all(startOfDay, endOfDay);
 
-  return results;
+  return rows.map(row => ({
+    ...row,
+    project_name: row.project_id ? (projectsMap[row.project_id]?.name || null) : null,
+    project_color: row.project_id ? (projectsMap[row.project_id]?.color || null) : null
+  }));
 }
 
 // ==========================================
-// Exports
+// Git Activity Functions
 // ==========================================
-
-/**
- * Git Activity Functions
- */
 
 /**
  * Get all git repositories
  */
 function getGitRepositories() {
-  if (!configDb) throw new Error('Config database not initialized');
+  if (!db) throw new Error('Database not initialized');
 
-  const results = [];
-  const stmt = configDb.prepare(`
+  const stmt = db.prepare(`
     SELECT r.*, p.name as project_name, p.color as project_color
     FROM git_repositories r
     LEFT JOIN projects p ON r.project_id = p.id
     ORDER BY r.repo_name
   `);
 
-  while (stmt.step()) {
-    results.push(stmt.getAsObject());
-  }
-  stmt.free();
-
-  return results;
+  return stmt.all();
 }
 
 /**
  * Get a single git repository by ID
  */
 function getGitRepository(id) {
-  if (!configDb) throw new Error('Config database not initialized');
+  if (!db) throw new Error('Database not initialized');
 
-  const stmt = configDb.prepare(`
+  const stmt = db.prepare(`
     SELECT r.*, p.name as project_name, p.color as project_color
     FROM git_repositories r
     LEFT JOIN projects p ON r.project_id = p.id
     WHERE r.id = ?
   `);
-  stmt.bind([id]);
 
-  let result = null;
-  if (stmt.step()) {
-    result = stmt.getAsObject();
-  }
-  stmt.free();
-
-  return result;
+  return stmt.get(id);
 }
 
 /**
  * Create a git repository entry
  */
 function createGitRepository({ repo_path, repo_name, project_id = null, is_active = true }) {
-  if (!configDb) throw new Error('Config database not initialized');
+  if (!db) throw new Error('Database not initialized');
 
-  const stmt = configDb.prepare(`
+  const stmt = db.prepare(`
     INSERT INTO git_repositories (repo_path, repo_name, project_id, is_active)
     VALUES (?, ?, ?, ?)
   `);
 
-  try {
-    stmt.run([repo_path, repo_name, project_id, is_active ? 1 : 0]);
-    stmt.free();
-
-    // Get the inserted ID
-    const idStmt = configDb.prepare('SELECT last_insert_rowid() as id');
-    idStmt.step();
-    const id = idStmt.getAsObject().id;
-    idStmt.free();
-
-    saveConfigDatabase();
-    return id;
-  } catch (error) {
-    stmt.free();
-    throw error;
-  }
+  const result = stmt.run(repo_path, repo_name, project_id, is_active ? 1 : 0);
+  return result.lastInsertRowid;
 }
 
 /**
  * Update git repository
  */
 function updateGitRepository(id, { project_id, is_active, last_scanned, last_commit_hash }) {
-  if (!configDb) throw new Error('Config database not initialized');
+  if (!db) throw new Error('Database not initialized');
 
   const updates = [];
   const values = [];
@@ -1304,32 +967,25 @@ function updateGitRepository(id, { project_id, is_active, last_scanned, last_com
 
   updates.push('updated_at = ?');
   values.push(Date.now());
-
   values.push(id);
 
-  const stmt = configDb.prepare(`
+  const stmt = db.prepare(`
     UPDATE git_repositories
     SET ${updates.join(', ')}
     WHERE id = ?
   `);
 
-  stmt.run(values);
-  stmt.free();
-
-  saveConfigDatabase();
+  stmt.run(...values);
 }
 
 /**
  * Delete git repository
  */
 function deleteGitRepository(id) {
-  if (!configDb) throw new Error('Config database not initialized');
+  if (!db) throw new Error('Database not initialized');
 
-  const stmt = configDb.prepare('DELETE FROM git_repositories WHERE id = ?');
-  stmt.run([id]);
-  stmt.free();
-
-  saveConfigDatabase();
+  const stmt = db.prepare('DELETE FROM git_repositories WHERE id = ?');
+  stmt.run(id);
 }
 
 /**
@@ -1346,9 +1002,9 @@ function insertGitActivity({
   timestamp,
   project_id = null
 }) {
-  if (!configDb) throw new Error('Config database not initialized');
+  if (!db) throw new Error('Database not initialized');
 
-  const stmt = configDb.prepare(`
+  const stmt = db.prepare(`
     INSERT INTO git_activity (
       repo_id, action_type, commit_hash, commit_message,
       branch_name, author_name, author_email, timestamp, project_id
@@ -1356,7 +1012,7 @@ function insertGitActivity({
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
-  stmt.run([
+  stmt.run(
     repo_id,
     action_type,
     commit_hash,
@@ -1366,17 +1022,14 @@ function insertGitActivity({
     author_email,
     timestamp,
     project_id
-  ]);
-  stmt.free();
-
-  saveConfigDatabase();
+  );
 }
 
 /**
  * Get git activity for a date range
  */
 function getGitActivity(startTime, endTime, projectId = null) {
-  if (!configDb) throw new Error('Config database not initialized');
+  if (!db) throw new Error('Database not initialized');
 
   let query = `
     SELECT
@@ -1400,23 +1053,15 @@ function getGitActivity(startTime, endTime, projectId = null) {
 
   query += ' ORDER BY a.timestamp DESC';
 
-  const results = [];
-  const stmt = configDb.prepare(query);
-  stmt.bind(params);
-
-  while (stmt.step()) {
-    results.push(stmt.getAsObject());
-  }
-  stmt.free();
-
-  return results;
+  const stmt = db.prepare(query);
+  return stmt.all(...params);
 }
 
 /**
  * Get git activity summary for a day (aggregated by repo/project)
  */
 function getGitActivitySummary(dateString, projectId = null) {
-  if (!configDb) throw new Error('Config database not initialized');
+  if (!db) throw new Error('Database not initialized');
 
   const startOfDay = new Date(dateString).setHours(0, 0, 0, 0);
   const endOfDay = new Date(dateString).setHours(23, 59, 59, 999);
@@ -1452,29 +1097,24 @@ function getGitActivitySummary(dateString, projectId = null) {
     ORDER BY activity_count DESC
   `;
 
-  const results = [];
-  const stmt = configDb.prepare(query);
-  stmt.bind(params);
-
-  while (stmt.step()) {
-    results.push(stmt.getAsObject());
-  }
-  stmt.free();
-
-  return results;
+  const stmt = db.prepare(query);
+  return stmt.all(...params);
 }
+
+// ==========================================
+// Exports
+// ==========================================
 
 module.exports = {
   // Initialization
   initDatabase,
   closeDatabase,
+  walCheckpoint,
 
-  // Save functions
+  // Backward compatibility (deprecated, no-ops)
   saveDatabase,
   saveActivityDatabase,
   saveConfigDatabase,
-
-  // Reload functions
   reloadDatabase,
   reloadActivityDatabase,
   reloadConfigDatabase,
@@ -1487,34 +1127,41 @@ module.exports = {
   assignSessionToProject,
   updateSessionsByDomain,
 
+  // Focus samples
+  insertFocusSample,
+  getFocusSamples,
+  getFocusSamplesForDomain,
+  countFocusSamplesForSession,
+  cleanupOldFocusSamples,
+
   // Cross-database reports
   getDailyReport,
   getDailyReportAll,
   getWorkdayStats,
 
-  // Config database - Settings
+  // Settings
   getSetting,
   setSetting,
 
-  // Config database - Projects
+  // Projects
   getProjects,
   getProject,
   createProject,
   updateProject,
   archiveProject,
 
-  // Config database - Project domains
+  // Project domains
   getProjectDomains,
   addProjectDomain,
   removeProjectDomain,
   findProjectByDomain,
 
-  // Config database - Project keywords
+  // Project keywords
   getProjectKeywords,
   addProjectKeyword,
   removeProjectKeyword,
 
-  // Config database - Calendar
+  // Calendar
   getCalendarSubscriptions,
   getCalendarSubscription,
   addCalendarSubscription,
@@ -1527,7 +1174,7 @@ module.exports = {
   getCalendarEvents,
   assignCalendarEventToProject,
 
-  // Git activity functions
+  // Git activity
   getGitRepositories,
   getGitRepository,
   createGitRepository,

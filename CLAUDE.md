@@ -18,7 +18,7 @@ The application runs as two separate processes:
 ### Data Flow
 
 ```
-Browser History DBs → daemon reads every 5min → aggregates into sessions → SQLite (data/activity.db) → web server queries → UI displays
+Browser History DBs → daemon reads every 5min → aggregates into sessions → SQLite (~/.time-tracker/timetracker.db) → web server queries → UI displays
 ```
 
 ### Key Components
@@ -27,17 +27,24 @@ Browser History DBs → daemon reads every 5min → aggregates into sessions →
 - `index.js`: Entry point, initializes DB and starts tracking
 - `tracker.js`: Orchestrates periodic browser history processing
 - `browser-history.js`: Reads Chrome/Safari history databases
-  - Copies locked browser DBs to temp files using `sql.js`
+  - Copies locked browser DBs to temp files for reading
   - Chrome: timestamps are microseconds since 1601-01-01
   - Safari: timestamps are seconds since 2001-01-01 (Cocoa epoch)
   - Aggregates visits into sessions (consecutive visits to same domain within 5min threshold)
 - `domain-extractor.js`: Extracts domains from URLs
 
 **Database (`database/`):**
-- `db.js`: SQLite wrapper using `sql.js` (in-memory with periodic saves)
-- `schema.sql`: Two main tables:
-  - `activity_events`: Raw events (5-second polls) - currently unused by browser history version
+- `db.js`: SQLite wrapper using `better-sqlite3` with WAL mode
+- `schema.sql`: Unified schema with all tables:
+  - `activity_events`: Raw events (5-second polls)
   - `activity_sessions`: Aggregated time sessions with domain/app/duration
+  - `focus_samples`: Browser focus state tracking
+  - `projects`: Project definitions
+  - `project_domains`: Domain-to-project mappings
+  - `calendar_subscriptions`: iCal feed subscriptions
+  - `calendar_events`: Synced calendar events
+  - `git_repositories`: Tracked git repos
+  - `git_activity`: Git commit/activity tracking
   - `settings`: Key-value configuration store
 
 **Server (`server/`):**
@@ -89,11 +96,12 @@ Sessions are created by grouping consecutive visits to the same domain:
 
 ### Database Pattern
 
-Uses `sql.js` (SQLite compiled to WebAssembly) running in-memory:
-- Database loaded from `data/activity.db` on startup
-- `saveDatabase()` writes to disk after each insert (can be optimized)
-- Always call `db.saveDatabase()` after mutations
-- Always call `db.closeDatabase()` on shutdown to prevent data loss
+Uses `better-sqlite3` (native SQLite bindings) with WAL mode:
+- Single database at `~/.time-tracker/timetracker.db`
+- WAL mode enables safe concurrent access (daemon + server can run simultaneously)
+- Writes go directly to disk - no manual save needed
+- Call `db.closeDatabase()` on shutdown for clean checkpoint
+- Periodic WAL checkpoint (every 5 minutes) keeps WAL file size manageable
 
 ### Settings Management
 
@@ -119,11 +127,13 @@ Key settings:
 ### Template System
 **IMPORTANT:** This project uses Nunjucks templates (`.njk` files in `server/views/`) which compile to HTML. Always edit the `.njk` source files, NOT the generated `.html` files directly. Changes to `.html` files will be overwritten.
 
-### Database State (In-Memory vs File)
-**CAUTION:** The application uses `sql.js` which runs SQLite in-memory. The database is loaded from `data/activity.db` on startup and must be explicitly saved to disk via `saveDatabase()`. Be aware that:
-- Changes are not persisted until `saveDatabase()` is called
-- If the daemon and server are both running, they have separate in-memory copies
-- This architecture needs improvement - see TODO for future research on proper database synchronization
+### Database Architecture
+The application uses `better-sqlite3` with WAL (Write-Ahead Logging) mode:
+- Single database file at `~/.time-tracker/timetracker.db`
+- WAL mode allows safe concurrent reads/writes from multiple processes
+- Both daemon and server can access the database simultaneously
+- Writes are immediately persisted - no manual save calls needed
+- `saveDatabase()` functions exist for backward compatibility but are no-ops
 
 ## Active Development
 

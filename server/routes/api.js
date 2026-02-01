@@ -584,6 +584,52 @@ router.post('/settings', (req, res) => {
 });
 
 /**
+ * GET /api/settings/focus
+ * Get focus tracking settings
+ */
+router.get('/settings/focus', (req, res) => {
+  try {
+    const settings = {
+      focus_tracking_enabled: db.getSetting('focus_tracking_enabled', 'true') === 'true',
+      focus_poll_interval_seconds: parseInt(db.getSetting('focus_poll_interval_seconds', '30'), 10),
+      max_session_duration_minutes: parseInt(db.getSetting('max_session_duration_minutes', '30'), 10)
+    };
+
+    res.json(settings);
+  } catch (error) {
+    console.error('Error in GET /api/settings/focus:', error);
+    res.status(500).json({ error: 'Failed to get focus settings' });
+  }
+});
+
+/**
+ * PUT /api/settings/focus
+ * Update focus tracking settings
+ */
+router.put('/settings/focus', (req, res) => {
+  try {
+    const { focus_tracking_enabled, focus_poll_interval_seconds, max_session_duration_minutes } = req.body;
+
+    if (focus_tracking_enabled !== undefined) {
+      db.setSetting('focus_tracking_enabled', focus_tracking_enabled ? 'true' : 'false');
+    }
+
+    if (focus_poll_interval_seconds !== undefined) {
+      db.setSetting('focus_poll_interval_seconds', focus_poll_interval_seconds.toString());
+    }
+
+    if (max_session_duration_minutes !== undefined) {
+      db.setSetting('max_session_duration_minutes', max_session_duration_minutes.toString());
+    }
+
+    res.json({ success: true, message: 'Focus settings updated. Restart daemon for changes to take effect.' });
+  } catch (error) {
+    console.error('Error in PUT /api/settings/focus:', error);
+    res.status(500).json({ error: 'Failed to update focus settings' });
+  }
+});
+
+/**
  * GET /api/chrome-profiles
  * Returns all discovered Chrome profiles with their enabled status
  */
